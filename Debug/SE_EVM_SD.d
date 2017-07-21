@@ -11,14 +11,15 @@ SE_EVM_SD.d SE_EVM_SD.o: .././SE_EVM_SD.c \
  c:\program\ files\ (x86)\atmel\atmel\ studio\ 6.0\extensions\atmel\avrgcc\3.4.1.95\avrtoolchain\bin\../lib/gcc/avr/4.6.2/../../../../avr/include/avr/version.h \
  c:\program\ files\ (x86)\atmel\atmel\ studio\ 6.0\extensions\atmel\avrgcc\3.4.1.95\avrtoolchain\bin\../lib/gcc/avr/4.6.2/../../../../avr/include/avr/fuse.h \
  c:\program\ files\ (x86)\atmel\atmel\ studio\ 6.0\extensions\atmel\avrgcc\3.4.1.95\avrtoolchain\bin\../lib/gcc/avr/4.6.2/../../../../avr/include/avr/lock.h \
+ c:\program\ files\ (x86)\atmel\atmel\ studio\ 6.0\extensions\atmel\avrgcc\3.4.1.95\avrtoolchain\bin\../lib/gcc/avr/4.6.2/../../../../avr/include/avr/pgmspace.h \
+ c:\program\ files\ (x86)\atmel\atmel\ studio\ 6.0\extensions\atmel\avrgcc\3.4.1.95\avrtoolchain\bin\../lib/gcc/avr/4.6.2/include/stddef.h \
  c:\program\ files\ (x86)\atmel\atmel\ studio\ 6.0\extensions\atmel\avrgcc\3.4.1.95\avrtoolchain\bin\../lib/gcc/avr/4.6.2/../../../../avr/include/util/delay.h \
  c:\program\ files\ (x86)\atmel\atmel\ studio\ 6.0\extensions\atmel\avrgcc\3.4.1.95\avrtoolchain\bin\../lib/gcc/avr/4.6.2/../../../../avr/include/util/delay_basic.h \
  c:\program\ files\ (x86)\atmel\atmel\ studio\ 6.0\extensions\atmel\avrgcc\3.4.1.95\avrtoolchain\bin\../lib/gcc/avr/4.6.2/../../../../avr/include/math.h \
  c:\program\ files\ (x86)\atmel\atmel\ studio\ 6.0\extensions\atmel\avrgcc\3.4.1.95\avrtoolchain\bin\../lib/gcc/avr/4.6.2/../../../../avr/include/util/twi.h \
  c:\program\ files\ (x86)\atmel\atmel\ studio\ 6.0\extensions\atmel\avrgcc\3.4.1.95\avrtoolchain\bin\../lib/gcc/avr/4.6.2/../../../../avr/include/avr/interrupt.h \
  c:\program\ files\ (x86)\atmel\atmel\ studio\ 6.0\extensions\atmel\avrgcc\3.4.1.95\avrtoolchain\bin\../lib/gcc/avr/4.6.2/../../../../avr/include/avr/eeprom.h \
- c:\program\ files\ (x86)\atmel\atmel\ studio\ 6.0\extensions\atmel\avrgcc\3.4.1.95\avrtoolchain\bin\../lib/gcc/avr/4.6.2/include/stddef.h \
- .././SPI_routines.h
+ .././SPI_routines.h .././SD_routines.h .././FAT32.h
 
 c:\program\ files\ (x86)\atmel\atmel\ studio\ 6.0\extensions\atmel\avrgcc\3.4.1.95\avrtoolchain\bin\../lib/gcc/avr/4.6.2/../../../../avr/include/avr/io.h:
 
@@ -44,6 +45,10 @@ c:\program\ files\ (x86)\atmel\atmel\ studio\ 6.0\extensions\atmel\avrgcc\3.4.1.
 
 c:\program\ files\ (x86)\atmel\atmel\ studio\ 6.0\extensions\atmel\avrgcc\3.4.1.95\avrtoolchain\bin\../lib/gcc/avr/4.6.2/../../../../avr/include/avr/lock.h:
 
+c:\program\ files\ (x86)\atmel\atmel\ studio\ 6.0\extensions\atmel\avrgcc\3.4.1.95\avrtoolchain\bin\../lib/gcc/avr/4.6.2/../../../../avr/include/avr/pgmspace.h:
+
+c:\program\ files\ (x86)\atmel\atmel\ studio\ 6.0\extensions\atmel\avrgcc\3.4.1.95\avrtoolchain\bin\../lib/gcc/avr/4.6.2/include/stddef.h:
+
 c:\program\ files\ (x86)\atmel\atmel\ studio\ 6.0\extensions\atmel\avrgcc\3.4.1.95\avrtoolchain\bin\../lib/gcc/avr/4.6.2/../../../../avr/include/util/delay.h:
 
 c:\program\ files\ (x86)\atmel\atmel\ studio\ 6.0\extensions\atmel\avrgcc\3.4.1.95\avrtoolchain\bin\../lib/gcc/avr/4.6.2/../../../../avr/include/util/delay_basic.h:
@@ -56,6 +61,8 @@ c:\program\ files\ (x86)\atmel\atmel\ studio\ 6.0\extensions\atmel\avrgcc\3.4.1.
 
 c:\program\ files\ (x86)\atmel\atmel\ studio\ 6.0\extensions\atmel\avrgcc\3.4.1.95\avrtoolchain\bin\../lib/gcc/avr/4.6.2/../../../../avr/include/avr/eeprom.h:
 
-c:\program\ files\ (x86)\atmel\atmel\ studio\ 6.0\extensions\atmel\avrgcc\3.4.1.95\avrtoolchain\bin\../lib/gcc/avr/4.6.2/include/stddef.h:
-
 .././SPI_routines.h:
+
+.././SD_routines.h:
+
+.././FAT32.h:

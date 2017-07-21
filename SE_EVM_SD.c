@@ -24,11 +24,14 @@
 */
 
 #include <avr/io.h> 
+#include <avr/pgmspace.h>
 #include <util/delay.h>
 #include <util/twi.h>
 #include <avr/interrupt.h>
 #include <avr/eeprom.h>
 #include "SPI_routines.h"
+#include "SD_routines.h"
+#include "FAT32.h"
 
 typedef struct			// Using to access individual bits/pins of a register/port
 {
@@ -555,6 +558,12 @@ void PORT_pins_init()
 	
 	DDRC = 0x00;				// Inputs from Encoder IC's
 	PORTC = 0xFF;				// Activste pull-ups for DATA in not for 'data availables'
+	
+	DDRB |= (1 << PB2);			// MOSI pin set as output
+	
+	cli();
+	spi_init();
+	
 }
 
 void USART_Init(void)
@@ -5322,7 +5331,8 @@ uint16_t i2cSaveName(uint8_t device_id, uint16_t locAddr, uint8_t *stringData, u
 
 int main(void)
 {
-		unsigned char i;
+		unsigned char i, error;
+		unsigned char fileName[13];
 		PORT_pins_init();				// Initialize PORT pins to desired direction and values
 		USART_Init();					// Initialize USART to set baud rate
 		i2c_init();						// Initializing I2C registers of ATmega32
@@ -5339,6 +5349,31 @@ int main(void)
 
 i2cReadWordArray(EEPROM_DEV_ADDR, namePtrSaveAddr, stringPtrArray, 30);		// Added 27.04.2017 Printer Integration. Reload Name string pointers
 
+
+/************************ SD card detection routine	*****************************/
+cardType = 0;
+
+for (i = 0; i < 10; i++)
+{
+	error = SD_init();
+	if(!error) break;
+}
+
+if(error)
+{
+	//TODO handle error codes here
+}
+
+error = getBootSectorData(); //read boot sector and keep necessary data in global variables
+if(error)
+{
+	// TODO handle card format type error detection
+}
+
+SPI_HIGH_SPEED;	//SCK - 4 MHz
+_delay_ms(1);   	//some delay for settling new spi speed
+
+/**********************************************************************************/
 			
 	while (INIT && RESULT)					// When Control unit is powered on, these two messages are continuously
 	{										// displayed on the LCD until a button i.e. INIT or RESULT is pressed.
