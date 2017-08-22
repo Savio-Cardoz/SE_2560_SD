@@ -4,5 +4,3 @@
 
 SE_EVM_SD.c
 
-SPI_routines.c
-

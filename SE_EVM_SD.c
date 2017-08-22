@@ -29,9 +29,9 @@
 #include <util/twi.h>
 #include <avr/interrupt.h>
 #include <avr/eeprom.h>
-#include "SPI_routines.h"
-#include "SD_routines.h"
-#include "FAT32.h"
+//#include "SPI_routines.h"
+//#include "SD_routines.h"
+//#include "FAT32.h"
 
 typedef struct			// Using to access individual bits/pins of a register/port
 {
@@ -66,10 +66,10 @@ typedef struct			// Using to access individual bits/pins of a register/port
 #define INIT REGISTER_BIT(PINL, 1)			// Initialize button
 #define RESULT REGISTER_BIT(PINL, 2)		// Result button
 
-#define matrix_A_data REGISTER_BIT(PINC, 0)	// Used to detect button presses on 1st voting pad ( data available of IC 74c922 goes high)
-#define matrix_B_data REGISTER_BIT(PINC, 1)	// Used to detect button presses on 2nd voting pad ( data available of IC 74c922 goes high)
-#define matrix_C_data REGISTER_BIT(PINC, 2)	// Used to detect button presses on 3rd voting pad ( data available of IC 74c922 goes high)
-#define matrix_D_data REGISTER_BIT(PINC, 3)	// Used to detect button presses on 4th voting pad ( data available of IC 74c922 goes high)
+#define matrix_A_data REGISTER_BIT(PINC, 4)	// Used to detect button presses on 1st voting pad ( data available of IC 74c922 goes high)
+#define matrix_B_data REGISTER_BIT(PINC, 5)	// Used to detect button presses on 2nd voting pad ( data available of IC 74c922 goes high)
+#define matrix_C_data REGISTER_BIT(PINC, 6)	// Used to detect button presses on 3rd voting pad ( data available of IC 74c922 goes high)
+#define matrix_D_data REGISTER_BIT(PINC, 7)	// Used to detect button presses on 4th voting pad ( data available of IC 74c922 goes high)
 
 
 #define LED REGISTER_BIT(PORTG, 0)			// To control LED on control unit
@@ -559,10 +559,14 @@ void PORT_pins_init()
 	DDRC = 0x00;				// Inputs from Encoder IC's
 	PORTC = 0xFF;				// Activste pull-ups for DATA in not for 'data availables'
 	
-	DDRB |= (1 << PB2);			// MOSI pin set as output
+	
+	DDRB = 0xEF;			// MISO pin set as input, rest are output
+	
+	SETBIT(DDRD, 6);		// LCD back light control
+	CLEARBIT(PORTD, 6);		// Switch ON LCD back light
 	
 	cli();
-	spi_init();
+	//spi_init();
 	
 }
 
@@ -1248,3827 +1252,3832 @@ void vote_registration()  			// Function to count votes
 		LED = 1;				// LED off
 		Buzzer = 0;				// Buzzer off
 		
-			/*******************************************************  added by neeraj on 08/12/15   ***********************************************************************/
-			if(votes_counter == 0)
+		/*******************************************************  added by neeraj on 08/12/15   ***********************************************************************/
+		if(votes_counter == 0)
+		{
+			while ((matrix_A_data == 0) && (matrix_B_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 0) && (INIT == 1)); // Wait while no button is pressed //
+			_delay_ms(100);
+			if(INIT == 0)
 			{
-				while ((matrix_A_data == 0) && (matrix_B_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 0) && (INIT == 1)); // Wait while no button is pressed //
-				_delay_ms(100);
-				if(INIT == 0)
+				while(INIT == 0);
+				i2c_send_byte(PIC_DEV_ADDR, 0);		// Clear the LED's
+				votes_counter=0;
+				vote_cast=1;
+				return;
+			}
+		}
+		/*******************************************************  added by neeraj on 08/12/15   ***********************************************************************/	
+		if(votes_counter > 0)             // added by neeraj on 08/12/2015
+		{	
+			while ((matrix_A_data == 0) && (matrix_B_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 0) && (INIT == 1)) // Wait while no button is pressed //
+			{
+				USART_Transmit_dec(PINC);
+				USART_SendByte(0x0D);
+			}
+			_delay_ms(100);		// To press bouncing button effect, false press.
+		
+			// Note PINB is where button data appears.
+			USART_Transmit_dec(PINC);
+			USART_SendByte(0x0D);
+		
+			if ((matrix_A_data == 1) && (matrix_B_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 0) && ((PINC & 0x0F) == 0x00) && (1 <= candidate_count) && (vote_indicator_1 == 0))		// Checking if button falls in the number of candidates selected when configuring the machine.
+			{																										// Also checking if button was previously pressed by the voter when allowed to cast multiple votes.
+				if((1 <= category_size_1) && (no_of_votes_cat1 != 0x00))				//
 				{
-					while(INIT == 0);
-					i2c_send_byte(PIC_DEV_ADDR, 0);		// Clear the LED's
-					votes_counter=0;
-					vote_cast=1;
-					return;
+					//USART_putstring("1C1 ");			// comment this out in final product
+					vote_indicator_1 = 1;				// Indicating button 1 was pressed
+					deactivate_category_buttons_and_save(button1_addr, 1);
+					//i2c_send_byte(PIC_DEV_ADDR, 1);
+					no_of_votes_cat1--;
+				}
+				else if((1 > no_of_buttons_in_categories) && (gen_vote_count != 0))
+				{
+					//USART_putstring("1G ");		// comment this out in final product
+					vote_indicator_1 = 1;			// Indicating button 1 was pressed
+					deactivate_category_buttons_and_save(button1_addr, 1);
+					//i2c_send_byte(PIC_DEV_ADDR, 1);
+					gen_vote_count--;
+				}	
+			}
+		
+			if ((matrix_A_data == 1) && (matrix_B_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 0) && ((PINC & 0x0F) == 0x01) && (2 <= candidate_count) && vote_indicator_2 == 0)
+			{
+				if((2 <= category_size_1) && (no_of_votes_cat1 != 0x00))				//
+				{
+					//USART_putstring("2C1 ");				// comment this out in final product
+					vote_indicator_2 = 1; 					// Indicating button 1 was pressed
+					no_of_votes_cat1--;
+					//i2c_send_byte(PIC_DEV_ADDR, 0x02);
+					deactivate_category_buttons_and_save(button2_addr, 2);  // provide starting and ending buttons as arguments
+				}
+				else if((2 > category_size_1) && (2 <= category_size_2) && (no_of_votes_cat2 != 0))	// check if this button in 2nd category combination of 1st and 2nd  category buttons.
+				{
+					//USART_putstring("2C2 ");
+					vote_indicator_2 = 1;				// Indicating button 2 was pressed.
+					deactivate_category_buttons_and_save(button2_addr, 2);
+					//i2c_send_byte(PIC_DEV_ADDR, 0x02);
+					no_of_votes_cat2--;
+				}
+				else if ((2 > no_of_buttons_in_categories) && (gen_vote_count != 0))
+				{
+					//USART_putstring("2G ");		// comment this out in final product
+					vote_indicator_2 = 1;			// Indicating button 1 was pressed
+					deactivate_category_buttons_and_save(button2_addr, 2);
+					//i2c_send_byte(PIC_DEV_ADDR, 0x02);
+					gen_vote_count--;
 				}
 			}
-			/*******************************************************  added by neeraj on 08/12/15   ***********************************************************************/
+		
+			if ((matrix_A_data == 1) && (matrix_B_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 0) && ((PINC & 0x0F) == 0x02) && (3 <= candidate_count) && vote_indicator_3==0)
+			{
+				if((3 <= category_size_1)	&& (no_of_votes_cat1 != 0x00))				//
+				{
+					//USART_putstring("3C1 ");
+					vote_indicator_3 = 1;				// Indicating button 3 was pressed.
+					deactivate_category_buttons_and_save(button3_addr, 3);			// provide starting and ending buttons as arguments
+					//i2c_send_byte(PIC_DEV_ADDR, 0x03);
+					no_of_votes_cat1--;
+				}
+				else if((3 > category_size_1) && (3 <= category_size_2) && (no_of_votes_cat2 != 0))	// check if this button in 2nd category combination of 1st and 2nd  category buttons.
+				{
+					//USART_putstring("3C2 ");
+					vote_indicator_3 = 1;				// Indicating button 3 was pressed.
+					deactivate_category_buttons_and_save(button3_addr, 3);
+					//i2c_send_byte(PIC_DEV_ADDR, 0x03);
+					no_of_votes_cat2--;
+				}
+				else if ((3 > no_of_buttons_in_categories) && (gen_vote_count != 0))
+				{
+					//USART_putstring("3G ");		// comment this out in final product
+					vote_indicator_3 = 1;			// Indicating button 1 was pressed
+					deactivate_category_buttons_and_save(button3_addr, 3);
+					//i2c_send_byte(PIC_DEV_ADDR, 0x03);
+					gen_vote_count--;
+				}
+			}
+		
+			if ((matrix_A_data == 1) && (matrix_B_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 0) && ((PINC & 0x0F) == 0x03) && (4 <= candidate_count) && vote_indicator_4 == 0)
+			{
+				if((4 <= category_size_1) && no_of_votes_cat1 != 0) 			//
+				{
+					//USART_putstring("4C1 ");
+					vote_indicator_4 = 1;			// Indicating button 3 was pressed.
+					deactivate_category_buttons_and_save(button4_addr, 4);  // provide starting and ending buttons as arguments
+					//i2c_send_byte(PIC_DEV_ADDR, 0x04);
+					no_of_votes_cat1--;
+				}
 			
-			if(votes_counter > 0)             // added by neeraj on 08/12/2015
-			{	
-		
-		while ((matrix_A_data == 0) && (matrix_B_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 0) && (INIT == 1)); // Wait while no button is pressed //
-		_delay_ms(100);		// To press bouncing button effect, false press.
-		
-		// Note PINB is where button data appears.
-		if ((matrix_A_data == 1) && (matrix_B_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 0) && ((PINB & 0x0F) == 0x00) && (1 <= candidate_count) && (vote_indicator_1 == 0))		// Checking if button falls in the number of candidates selected when configuring the machine.
-		{																										// Also checking if button was previously pressed by the voter when allowed to cast multiple votes.
-			if((1 <= category_size_1) && (no_of_votes_cat1 != 0x00))				//
-			{
-				//USART_putstring("1C1 ");			// comment this out in final product
-				vote_indicator_1 = 1;				// Indicating button 1 was pressed
-				deactivate_category_buttons_and_save(button1_addr, 1);
-				//i2c_send_byte(PIC_DEV_ADDR, 1);
-				no_of_votes_cat1--;
-			}
-			else if((1 > no_of_buttons_in_categories) && (gen_vote_count != 0))
-			{
-				//USART_putstring("1G ");		// comment this out in final product
-				vote_indicator_1 = 1;			// Indicating button 1 was pressed
-				deactivate_category_buttons_and_save(button1_addr, 1);
-				//i2c_send_byte(PIC_DEV_ADDR, 1);
-				gen_vote_count--;
-			}	
-		}
-		
-		if ((matrix_A_data == 1) && (matrix_B_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 0) && ((PINB & 0x0F) == 0x01) && (2 <= candidate_count) && vote_indicator_2 == 0)
-		{
-			if((2 <= category_size_1) && (no_of_votes_cat1 != 0x00))				//
-			{
-				//USART_putstring("2C1 ");				// comment this out in final product
-				vote_indicator_2 = 1; 					// Indicating button 1 was pressed
-				no_of_votes_cat1--;
-				//i2c_send_byte(PIC_DEV_ADDR, 0x02);
-				deactivate_category_buttons_and_save(button2_addr, 2);  // provide starting and ending buttons as arguments
-			}
-			else if((2 > category_size_1) && (2 <= category_size_2) && (no_of_votes_cat2 != 0))	// check if this button in 2nd category combination of 1st and 2nd  category buttons.
-			{
-				//USART_putstring("2C2 ");
-				vote_indicator_2 = 1;				// Indicating button 2 was pressed.
-				deactivate_category_buttons_and_save(button2_addr, 2);
-				//i2c_send_byte(PIC_DEV_ADDR, 0x02);
-				no_of_votes_cat2--;
-			}
-			else if ((2 > no_of_buttons_in_categories) && (gen_vote_count != 0))
-			{
-				//USART_putstring("2G ");		// comment this out in final product
-				vote_indicator_2 = 1;			// Indicating button 1 was pressed
-				deactivate_category_buttons_and_save(button2_addr, 2);
-				//i2c_send_byte(PIC_DEV_ADDR, 0x02);
-				gen_vote_count--;
-			}
-		}
-		
-		if ((matrix_A_data == 1) && (matrix_B_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 0) && ((PINB & 0x0F) == 0x02) && (3 <= candidate_count) && vote_indicator_3==0)
-		{
-			if((3 <= category_size_1)	&& (no_of_votes_cat1 != 0x00))				//
-			{
-				//USART_putstring("3C1 ");
-				vote_indicator_3 = 1;				// Indicating button 3 was pressed.
-				deactivate_category_buttons_and_save(button3_addr, 3);			// provide starting and ending buttons as arguments
-				//i2c_send_byte(PIC_DEV_ADDR, 0x03);
-				no_of_votes_cat1--;
-			}
-			else if((3 > category_size_1) && (3 <= category_size_2) && (no_of_votes_cat2 != 0))	// check if this button in 2nd category combination of 1st and 2nd  category buttons.
-			{
-				//USART_putstring("3C2 ");
-				vote_indicator_3 = 1;				// Indicating button 3 was pressed.
-				deactivate_category_buttons_and_save(button3_addr, 3);
-				//i2c_send_byte(PIC_DEV_ADDR, 0x03);
-				no_of_votes_cat2--;
-			}
-			else if ((3 > no_of_buttons_in_categories) && (gen_vote_count != 0))
-			{
-				//USART_putstring("3G ");		// comment this out in final product
-				vote_indicator_3 = 1;			// Indicating button 1 was pressed
-				deactivate_category_buttons_and_save(button3_addr, 3);
-				//i2c_send_byte(PIC_DEV_ADDR, 0x03);
-				gen_vote_count--;
-			}
-		}
-		
-		if ((matrix_A_data == 1) && (matrix_B_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 0) && ((PINB & 0x0F) == 0x03) && (4 <= candidate_count) && vote_indicator_4 == 0)
-		{
-			if((4 <= category_size_1) && no_of_votes_cat1 != 0) 			//
-			{
-				//USART_putstring("4C1 ");
-				vote_indicator_4 = 1;			// Indicating button 3 was pressed.
-				deactivate_category_buttons_and_save(button4_addr, 4);  // provide starting and ending buttons as arguments
-				//i2c_send_byte(PIC_DEV_ADDR, 0x04);
-				no_of_votes_cat1--;
-			}
+				else if((4 > category_size_1) && (4 <= category_size_2) && (no_of_votes_cat2 != 0))	// check if this button in 2nd category combination of 1st and 2nd  category buttons.
+				{
+					//USART_putstring("4C2 ");
+					vote_indicator_4 = 1;			// Indicating button 3 was pressed.
+					deactivate_category_buttons_and_save(button4_addr, 4);
+					//i2c_send_byte(PIC_DEV_ADDR, 0x04);
+					no_of_votes_cat2--;
+				}
 			
-			else if((4 > category_size_1) && (4 <= category_size_2) && (no_of_votes_cat2 != 0))	// check if this button in 2nd category combination of 1st and 2nd  category buttons.
-			{
-				//USART_putstring("4C2 ");
-				vote_indicator_4 = 1;			// Indicating button 3 was pressed.
-				deactivate_category_buttons_and_save(button4_addr, 4);
-				//i2c_send_byte(PIC_DEV_ADDR, 0x04);
-				no_of_votes_cat2--;
+				/// Added by Brendz on March 7th 2017. Btn 4 fell into category 3 and was not checked in any if Conditions
+				else if((4 > category_size_2) && (4 <= category_size_3) && (no_of_votes_cat3 != 0))	// check if this button in 2nd category combination of 1st and 2nd  category buttons.
+				{
+					//USART_putstring("4C2 ");
+					vote_indicator_4 = 1;			// Indicating button 3 was pressed.
+					deactivate_category_buttons_and_save(button4_addr, 4);
+					//i2c_send_byte(PIC_DEV_ADDR, 0x04);
+					no_of_votes_cat3--;
+				}
+				else if ((4 > no_of_buttons_in_categories) && (gen_vote_count != 0))
+				{
+					//USART_putstring("4G ");		// comment this out in final product
+					vote_indicator_4 = 1;			// Indicating button 1 was pressed
+					deactivate_category_buttons_and_save(button4_addr, 4);
+					//i2c_send_byte(PIC_DEV_ADDR, 0x04);
+					gen_vote_count--;
+				}
 			}
+		
+			if ((matrix_A_data == 1) && (matrix_B_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 0) && ((PINC & 0x0F) == 0x04) && (5 <= candidate_count) && vote_indicator_5==0)
+			{
+				if((5 <= category_size_1) && (no_of_votes_cat1 != 0x00))	//
+				{
+					//USART_putstring("5C1 ");
+					vote_indicator_5 = 1;							// Indicating button 5 was pressed.
+					deactivate_category_buttons_and_save(button5_addr, 5);		// provide starting and ending buttons as arguments
+					//i2c_send_byte(PIC_DEV_ADDR, 0x05);
+					no_of_votes_cat1--;
+				}
+				else if((5 > category_size_1) && (5 <= category_size_2) && (no_of_votes_cat2 != 0))// check if this button in 2nd category combination of 1st and 2nd  category buttons.
+				{
+					//USART_putstring("5C2 ");
+					vote_indicator_5 = 1;	// Indicating button 5 was pressed.
+					deactivate_category_buttons_and_save(button5_addr, 5);
+					//i2c_send_byte(PIC_DEV_ADDR, 0x05);
+					no_of_votes_cat2--;
+				}
+				else if((5 > category_size_2) && (5 <= category_size_3) && (no_of_votes_cat3 != 0))
+				{
+					//USART_putstring("5C3 ");
+					vote_indicator_5 = 1;	// Indicating button 5 was pressed.
+					deactivate_category_buttons_and_save(button5_addr, 5);
+					//i2c_send_byte(PIC_DEV_ADDR, 0x05);
+					no_of_votes_cat3--;
+				}
+				else if((5 > no_of_buttons_in_categories) && (gen_vote_count != 0))
+				{
+					//USART_putstring("5G ");		// comment this out in final product
+					vote_indicator_5 = 1;			// Indicating button 1 was pressed
+					deactivate_category_buttons_and_save(button5_addr, 5);
+					//i2c_send_byte(PIC_DEV_ADDR, 0x05);
+					gen_vote_count--;
+				}
+			}
+		
+			if ((matrix_A_data == 1) && (matrix_B_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 0) && ((PINC & 0x0F) == 0x05) && (6 <= candidate_count) && (vote_indicator_6 == 0))
+			{
+				if((6 <= category_size_1) && (no_of_votes_cat1 != 0))		// 
+				{
+					//USART_putstring("6C1 ");
+					vote_indicator_6 = 1;					// Indicating button 6 was presses.
+					deactivate_category_buttons_and_save(button6_addr, 6);  // provide starting and ending buttons as arguments
+					//i2c_send_byte(PIC_DEV_ADDR, 0x06);
+					no_of_votes_cat1--;
+				}
+				else if((6 > category_size_1) && (6 <= category_size_2) && (no_of_votes_cat2 != 0))// check if this button in 2nd category combination of 1st and 2nd  category buttons.
+				{
+					//USART_putstring("6C2 ");
+					vote_indicator_6 = 1;	// Indicating button 6 was pressed.
+					deactivate_category_buttons_and_save(button6_addr, 6);
+					//i2c_send_byte(PIC_DEV_ADDR, 0x06);
+					no_of_votes_cat2--;
+				}
+				else if((6 > category_size_2) && (6 <= category_size_3) && (no_of_votes_cat3 != 0))
+				{
+					//USART_putstring("6C3 ");
+					vote_indicator_6 = 1;	// Indicating button 6 was presses.
+					deactivate_category_buttons_and_save(button6_addr, 6);
+					//i2c_send_byte(PIC_DEV_ADDR, 0x06);
+					no_of_votes_cat3--;
+				}
+				else if ((6 > no_of_buttons_in_categories) && (gen_vote_count != 0))
+				{
+					//USART_putstring("6G ");		// comment this out in final product
+					vote_indicator_6 = 1;			// Indicating button 1 was pressed
+					deactivate_category_buttons_and_save(button6_addr, 6);
+					//i2c_send_byte(PIC_DEV_ADDR, 0x06);
+					gen_vote_count--;
+				}
+			}
+		
+			if ((matrix_A_data == 1) && (matrix_B_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 0) && ((PINC & 0x0F) == 0x06) && (7 <= candidate_count) && vote_indicator_7==0)
+			{
+				if((7 <= category_size_1) && (no_of_votes_cat1 != 0))			//.
+				{
+					//USART_putstring("7C1 ");
+					vote_indicator_7 = 1;	// Indicating button 7 was presses.
+					deactivate_category_buttons_and_save(button7_addr, 7);  // provide starting and ending buttons as arguments
+					//i2c_send_byte(PIC_DEV_ADDR, 0x07);
+					no_of_votes_cat1--;
+				}
+				else if((7 > category_size_1) && (7 <= category_size_2) && (no_of_votes_cat2 != 0))// check if this button in 2nd category combination of 1st and 2nd  category buttons.
+				{
+					//USART_putstring("7C2 ");
+					vote_indicator_7 = 1;	// Indicating button 7 was presses.
+					deactivate_category_buttons_and_save(button7_addr, 7);
+					//i2c_send_byte(PIC_DEV_ADDR, 0x07);
+					no_of_votes_cat2--;
+				}
+				else if((7 > category_size_2) && (7 <= category_size_3) && (no_of_votes_cat3 != 0))
+				{
+					//USART_putstring("7C3 ");
+					vote_indicator_7 = 1;	// Indicating button 7 was presses.
+					deactivate_category_buttons_and_save(button7_addr, 7);
+					//i2c_send_byte(PIC_DEV_ADDR, 0x07);
+					no_of_votes_cat3--;
+				}
+				else if((7 > category_size_3) && (7 <= category_size_4) && (no_of_votes_cat4 != 0))
+				{
+					//USART_putstring("7C4 ");
+					vote_indicator_7 = 1;	// Indicating button 7 was presses.
+					deactivate_category_buttons_and_save(button7_addr, 7);
+					//i2c_send_byte(PIC_DEV_ADDR, 0x07);
+					no_of_votes_cat4--;
+				}
+				else if ((7 > no_of_buttons_in_categories) && (gen_vote_count != 0))
+				{
+					//USART_putstring("7G ");		// comment this out in final product
+					vote_indicator_7 = 1;			// Indicating button 1 was pressed
+					deactivate_category_buttons_and_save(button7_addr, 7);
+					//i2c_send_byte(PIC_DEV_ADDR, 0x07);
+					gen_vote_count--;
+				}
+			}
+		
+			if ((matrix_A_data == 1) && (matrix_B_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 0) && ((PINC & 0x0F) == 0x07) && (8 <= candidate_count) && vote_indicator_8==0)
+			{
+				if((8 <= category_size_1) && (no_of_votes_cat1 != 0))		//
+				{
+					//USART_putstring("8C1 ");
+					vote_indicator_8 = 1;	// Indicating button 8 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 0x08);
+					deactivate_category_buttons_and_save(button8_addr, 8);  // provide starting and ending buttons as arguments
+					no_of_votes_cat1--;
+				}
+				else if((8 > category_size_1) && (8 <= category_size_2) && (no_of_votes_cat2 != 0))// check if this button in 2nd category combination of 1st and 2nd  category buttons.
+				{
+					//USART_putstring("8C2 ");
+					vote_indicator_8 = 1;	// Indicating button 8 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 0x08);
+					deactivate_category_buttons_and_save(button8_addr, 8);
+					no_of_votes_cat2--;
+				}
+				else if((8 > category_size_2) && (8 <= category_size_3) && (no_of_votes_cat3 != 0))
+				{
+					//USART_putstring("8C3 ");
+					vote_indicator_8 = 1;
+					//i2c_send_byte(PIC_DEV_ADDR, 0x08);
+					deactivate_category_buttons_and_save(button8_addr, 8);
+					no_of_votes_cat3--;
+				}
+				else if((8 > category_size_3) && (8 <= category_size_4) && (no_of_votes_cat4 != 0))
+				{
+					//USART_putstring("8C4 ");
+					vote_indicator_8 = 1;
+					//i2c_send_byte(PIC_DEV_ADDR, 0x08);
+					deactivate_category_buttons_and_save(button8_addr, 8);
+					no_of_votes_cat4--;
+				}
 			
-			/// Added by Brendz on March 7th 2017. Btn 4 fell into category 3 and was not checked in any if Conditions
-			else if((4 > category_size_2) && (4 <= category_size_3) && (no_of_votes_cat3 != 0))	// check if this button in 2nd category combination of 1st and 2nd  category buttons.
-			{
-				//USART_putstring("4C2 ");
-				vote_indicator_4 = 1;			// Indicating button 3 was pressed.
-				deactivate_category_buttons_and_save(button4_addr, 4);
-				//i2c_send_byte(PIC_DEV_ADDR, 0x04);
-				no_of_votes_cat3--;
-			}
-			else if ((4 > no_of_buttons_in_categories) && (gen_vote_count != 0))
-			{
-				//USART_putstring("4G ");		// comment this out in final product
-				vote_indicator_4 = 1;			// Indicating button 1 was pressed
-				deactivate_category_buttons_and_save(button4_addr, 4);
-				//i2c_send_byte(PIC_DEV_ADDR, 0x04);
-				gen_vote_count--;
-			}
-		}
-		
-		if ((matrix_A_data == 1) && (matrix_B_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 0) && ((PINB & 0x0F) == 0x04) && (5 <= candidate_count) && vote_indicator_5==0)
-		{
-			if((5 <= category_size_1) && (no_of_votes_cat1 != 0x00))	//
-			{
-				//USART_putstring("5C1 ");
-				vote_indicator_5 = 1;							// Indicating button 5 was pressed.
-				deactivate_category_buttons_and_save(button5_addr, 5);		// provide starting and ending buttons as arguments
-				//i2c_send_byte(PIC_DEV_ADDR, 0x05);
-				no_of_votes_cat1--;
-			}
-			else if((5 > category_size_1) && (5 <= category_size_2) && (no_of_votes_cat2 != 0))// check if this button in 2nd category combination of 1st and 2nd  category buttons.
-			{
-				//USART_putstring("5C2 ");
-				vote_indicator_5 = 1;	// Indicating button 5 was pressed.
-				deactivate_category_buttons_and_save(button5_addr, 5);
-				//i2c_send_byte(PIC_DEV_ADDR, 0x05);
-				no_of_votes_cat2--;
-			}
-			else if((5 > category_size_2) && (5 <= category_size_3) && (no_of_votes_cat3 != 0))
-			{
-				//USART_putstring("5C3 ");
-				vote_indicator_5 = 1;	// Indicating button 5 was pressed.
-				deactivate_category_buttons_and_save(button5_addr, 5);
-				//i2c_send_byte(PIC_DEV_ADDR, 0x05);
-				no_of_votes_cat3--;
-			}
-			else if((5 > no_of_buttons_in_categories) && (gen_vote_count != 0))
-			{
-				//USART_putstring("5G ");		// comment this out in final product
-				vote_indicator_5 = 1;			// Indicating button 1 was pressed
-				deactivate_category_buttons_and_save(button5_addr, 5);
-				//i2c_send_byte(PIC_DEV_ADDR, 0x05);
-				gen_vote_count--;
-			}
-		}
-		
-		if ((matrix_A_data == 1) && (matrix_B_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 0) && ((PINB & 0x0F) == 0x05) && (6 <= candidate_count) && (vote_indicator_6 == 0))
-		{
-			if((6 <= category_size_1) && (no_of_votes_cat1 != 0))		// 
-			{
-				//USART_putstring("6C1 ");
-				vote_indicator_6 = 1;					// Indicating button 6 was presses.
-				deactivate_category_buttons_and_save(button6_addr, 6);  // provide starting and ending buttons as arguments
-				//i2c_send_byte(PIC_DEV_ADDR, 0x06);
-				no_of_votes_cat1--;
-			}
-			else if((6 > category_size_1) && (6 <= category_size_2) && (no_of_votes_cat2 != 0))// check if this button in 2nd category combination of 1st and 2nd  category buttons.
-			{
-				//USART_putstring("6C2 ");
-				vote_indicator_6 = 1;	// Indicating button 6 was pressed.
-				deactivate_category_buttons_and_save(button6_addr, 6);
-				//i2c_send_byte(PIC_DEV_ADDR, 0x06);
-				no_of_votes_cat2--;
-			}
-			else if((6 > category_size_2) && (6 <= category_size_3) && (no_of_votes_cat3 != 0))
-			{
-				//USART_putstring("6C3 ");
-				vote_indicator_6 = 1;	// Indicating button 6 was presses.
-				deactivate_category_buttons_and_save(button6_addr, 6);
-				//i2c_send_byte(PIC_DEV_ADDR, 0x06);
-				no_of_votes_cat3--;
-			}
-			else if ((6 > no_of_buttons_in_categories) && (gen_vote_count != 0))
-			{
-				//USART_putstring("6G ");		// comment this out in final product
-				vote_indicator_6 = 1;			// Indicating button 1 was pressed
-				deactivate_category_buttons_and_save(button6_addr, 6);
-				//i2c_send_byte(PIC_DEV_ADDR, 0x06);
-				gen_vote_count--;
-			}
-		}
-		
-		if ((matrix_A_data == 1) && (matrix_B_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 0) && ((PINB & 0x0F) == 0x06) && (7 <= candidate_count) && vote_indicator_7==0)
-		{
-			if((7 <= category_size_1) && (no_of_votes_cat1 != 0))			//.
-			{
-				//USART_putstring("7C1 ");
-				vote_indicator_7 = 1;	// Indicating button 7 was presses.
-				deactivate_category_buttons_and_save(button7_addr, 7);  // provide starting and ending buttons as arguments
-				//i2c_send_byte(PIC_DEV_ADDR, 0x07);
-				no_of_votes_cat1--;
-			}
-			else if((7 > category_size_1) && (7 <= category_size_2) && (no_of_votes_cat2 != 0))// check if this button in 2nd category combination of 1st and 2nd  category buttons.
-			{
-				//USART_putstring("7C2 ");
-				vote_indicator_7 = 1;	// Indicating button 7 was presses.
-				deactivate_category_buttons_and_save(button7_addr, 7);
-				//i2c_send_byte(PIC_DEV_ADDR, 0x07);
-				no_of_votes_cat2--;
-			}
-			else if((7 > category_size_2) && (7 <= category_size_3) && (no_of_votes_cat3 != 0))
-			{
-				//USART_putstring("7C3 ");
-				vote_indicator_7 = 1;	// Indicating button 7 was presses.
-				deactivate_category_buttons_and_save(button7_addr, 7);
-				//i2c_send_byte(PIC_DEV_ADDR, 0x07);
-				no_of_votes_cat3--;
-			}
-			else if((7 > category_size_3) && (7 <= category_size_4) && (no_of_votes_cat4 != 0))
-			{
-				//USART_putstring("7C4 ");
-				vote_indicator_7 = 1;	// Indicating button 7 was presses.
-				deactivate_category_buttons_and_save(button7_addr, 7);
-				//i2c_send_byte(PIC_DEV_ADDR, 0x07);
-				no_of_votes_cat4--;
-			}
-			else if ((7 > no_of_buttons_in_categories) && (gen_vote_count != 0))
-			{
-				//USART_putstring("7G ");		// comment this out in final product
-				vote_indicator_7 = 1;			// Indicating button 1 was pressed
-				deactivate_category_buttons_and_save(button7_addr, 7);
-				//i2c_send_byte(PIC_DEV_ADDR, 0x07);
-				gen_vote_count--;
-			}
-		}
-		
-		if ((matrix_A_data == 1) && (matrix_B_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 0) && ((PINB & 0x0F) == 0x07) && (8 <= candidate_count) && vote_indicator_8==0)
-		{
-			if((8 <= category_size_1) && (no_of_votes_cat1 != 0))		//
-			{
-				//USART_putstring("8C1 ");
-				vote_indicator_8 = 1;	// Indicating button 8 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 0x08);
-				deactivate_category_buttons_and_save(button8_addr, 8);  // provide starting and ending buttons as arguments
-				no_of_votes_cat1--;
-			}
-			else if((8 > category_size_1) && (8 <= category_size_2) && (no_of_votes_cat2 != 0))// check if this button in 2nd category combination of 1st and 2nd  category buttons.
-			{
-				//USART_putstring("8C2 ");
-				vote_indicator_8 = 1;	// Indicating button 8 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 0x08);
-				deactivate_category_buttons_and_save(button8_addr, 8);
-				no_of_votes_cat2--;
-			}
-			else if((8 > category_size_2) && (8 <= category_size_3) && (no_of_votes_cat3 != 0))
-			{
-				//USART_putstring("8C3 ");
-				vote_indicator_8 = 1;
-				//i2c_send_byte(PIC_DEV_ADDR, 0x08);
-				deactivate_category_buttons_and_save(button8_addr, 8);
-				no_of_votes_cat3--;
-			}
-			else if((8 > category_size_3) && (8 <= category_size_4) && (no_of_votes_cat4 != 0))
-			{
-				//USART_putstring("8C4 ");
-				vote_indicator_8 = 1;
-				//i2c_send_byte(PIC_DEV_ADDR, 0x08);
-				deactivate_category_buttons_and_save(button8_addr, 8);
-				no_of_votes_cat4--;
-			}
+				/// Added by Brendz on March 7th 2017. Btn 8 fell into category 5 and was not checked in any if Conditions
+				else if((8 > category_size_4) && (8 <= category_size_5) && (no_of_votes_cat5 != 0))
+				{
+					//USART_putstring("8C4 ");
+					vote_indicator_8 = 1;
+					//i2c_send_byte(PIC_DEV_ADDR, 0x08);
+					deactivate_category_buttons_and_save(button8_addr, 8);
+					no_of_votes_cat5--;
+				}
 			
-			/// Added by Brendz on March 7th 2017. Btn 8 fell into category 5 and was not checked in any if Conditions
-			else if((8 > category_size_4) && (8 <= category_size_5) && (no_of_votes_cat5 != 0))
-			{
-				//USART_putstring("8C4 ");
-				vote_indicator_8 = 1;
-				//i2c_send_byte(PIC_DEV_ADDR, 0x08);
-				deactivate_category_buttons_and_save(button8_addr, 8);
-				no_of_votes_cat5--;
+				else if ((8 > no_of_buttons_in_categories) && (gen_vote_count != 0))
+				{
+					//USART_putstring("8G ");		// comment this out in final product
+					vote_indicator_8 = 1;			// Indicating button 1 was pressed
+					deactivate_category_buttons_and_save(button8_addr, 8);
+					//i2c_send_byte(PIC_DEV_ADDR, 0x08);
+					gen_vote_count--;
+				}
 			}
+		
+			if ((matrix_A_data == 1) && (matrix_B_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 0) && ((PINC & 0x0F) == 0x08) && (9 <= candidate_count) && vote_indicator_9==0)
+			{
+				if((9 <= category_size_1) && (no_of_votes_cat1 != 0))
+				{
+					//USART_putstring("9C1 ");
+					vote_indicator_9 = 1;	// Indicating button 9 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 0x09);
+					deactivate_category_buttons_and_save(button9_addr, 9);
+					no_of_votes_cat1--;
+				}
 			
-			else if ((8 > no_of_buttons_in_categories) && (gen_vote_count != 0))
-			{
-				//USART_putstring("8G ");		// comment this out in final product
-				vote_indicator_8 = 1;			// Indicating button 1 was pressed
-				deactivate_category_buttons_and_save(button8_addr, 8);
-				//i2c_send_byte(PIC_DEV_ADDR, 0x08);
-				gen_vote_count--;
+				else if((9 > category_size_1) && (9 <= category_size_2) && (no_of_votes_cat2 != 0))// check if this button in 2nd category combination of 1st and 2nd  category buttons.
+				{
+					//USART_putstring("9C2 ");
+					vote_indicator_9 = 1;	// Indicating button 9 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 0x09);
+					deactivate_category_buttons_and_save(button9_addr, 9);
+					no_of_votes_cat2--;
+				}
+				else if((9 > category_size_2) && (9 <= category_size_3) && (no_of_votes_cat3 != 0))
+				{
+					//USART_putstring("9C3 ");
+					vote_indicator_9 = 1;	// Indicating button 9 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 0x09);
+					deactivate_category_buttons_and_save(button9_addr, 9);
+					no_of_votes_cat3--;
+				}
+				else if((9 > category_size_3) && (9 <= category_size_4) && (no_of_votes_cat4 != 0))
+				{
+					//USART_putstring("9C4 ");
+					vote_indicator_9 = 1;	// Indicating button 9 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 0x09);
+					deactivate_category_buttons_and_save(button9_addr, 9);
+					no_of_votes_cat4--;
+				}
+				else if((9 > category_size_4) && (9 <= category_size_5) && (no_of_votes_cat5 != 0))
+				{
+					//USART_putstring("9C5 ");
+					vote_indicator_9 = 1;	// Indicating button 9 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 9);
+					deactivate_category_buttons_and_save(button9_addr, 9);
+					no_of_votes_cat5--;
+				}
+				else if ((9 > no_of_buttons_in_categories) && (gen_vote_count != 0))
+				{
+					//USART_putstring("9G ");		// comment this out in final product
+					vote_indicator_9 = 1;			// Indicating button 1 was pressed
+					deactivate_category_buttons_and_save(button9_addr, 9);
+					//i2c_send_byte(PIC_DEV_ADDR, 0x09);
+					gen_vote_count--;
+				}
 			}
-		}
 		
-		if ((matrix_A_data == 1) && (matrix_B_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 0) && ((PINB & 0x0F) == 0x08) && (9 <= candidate_count) && vote_indicator_9==0)
-		{
-			if((9 <= category_size_1) && (no_of_votes_cat1 != 0))
+			if ((matrix_A_data == 1) && (matrix_B_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 0) && ((PINC & 0x0F) == 0x09) && (10 <= candidate_count) && vote_indicator_10==0)// && (gen_vote_count != 0))
 			{
-				//USART_putstring("9C1 ");
-				vote_indicator_9 = 1;	// Indicating button 9 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 0x09);
-				deactivate_category_buttons_and_save(button9_addr, 9);
-				no_of_votes_cat1--;
+				if((10 <= category_size_1) && (no_of_votes_cat1 != 0))
+				{
+					//USART_putstring("10C1 ");
+					vote_indicator_10 = 1;	// Indicating button 9 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 10);
+					deactivate_category_buttons_and_save(button10_addr, 10);
+					no_of_votes_cat1--;
+				}
+				else if((10 > category_size_1) && (10 <= category_size_2) && (no_of_votes_cat2 != 0))// check if this button in 2nd category combination of 1st and 2nd  category buttons.
+				{
+					//USART_putstring("10C2 ");
+					vote_indicator_10 = 1;	// Indicating button 10 was presses.
+					deactivate_category_buttons_and_save(button10_addr, 10);
+					//i2c_send_byte(PIC_DEV_ADDR, 10);
+					no_of_votes_cat2--;
+				}
+				else if((10 > category_size_2) && (10 <= category_size_3) && (no_of_votes_cat3 != 0))
+				{
+					//USART_putstring("10C3 ");
+					vote_indicator_10 = 1;	// Indicating button 10 was presses.
+					deactivate_category_buttons_and_save(button10_addr, 10);
+					//i2c_send_byte(PIC_DEV_ADDR, 10);
+					no_of_votes_cat3--;
+				}
+				else if((10 > category_size_3) && (10 <= category_size_4) && (no_of_votes_cat4 != 0))
+				{
+					//USART_putstring("10C4 ");
+					vote_indicator_10 = 1;	// Indicating button 10 was presses.
+					deactivate_category_buttons_and_save(button10_addr, 10);
+					//i2c_send_byte(PIC_DEV_ADDR, 10);
+					no_of_votes_cat4--;
+				}
+				else if((10 > category_size_4) && (10 <= category_size_5) && (no_of_votes_cat5 != 0))
+				{
+					//USART_putstring("10 C 5");
+					vote_indicator_10 = 1;	// Indicating button 10 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 10);
+					deactivate_category_buttons_and_save(button10_addr, 10);
+					no_of_votes_cat5--;
+				}
+				else if ((10 > no_of_buttons_in_categories) && (gen_vote_count != 0))
+				{
+					//USART_putstring("10G ");		// comment this out in final product
+					vote_indicator_10 = 1;			// Indicating button 1 was pressed
+					deactivate_category_buttons_and_save(button10_addr, 10);
+					//i2c_send_byte(PIC_DEV_ADDR, 10);
+					gen_vote_count--;
+				}
 			}
+		
+			if ((matrix_A_data == 1) && (matrix_B_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 0) && ((PINC & 0x0F) == 0x0A) && (11 <= candidate_count) && vote_indicator_11==0)// && (gen_vote_count != 0))
+			{
+				if((11 <= category_size_1) && (no_of_votes_cat1 != 0))
+				{
+					//USART_putstring("11C1 ");
+					vote_indicator_11 = 1;	// Indicating button 9 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 11);
+					deactivate_category_buttons_and_save(button11_addr, 11);
+					no_of_votes_cat1--;
+				}
+				else if((11 > category_size_1) && (11 <= category_size_2) && (no_of_votes_cat2 != 0))// check if this button in 2nd category combination of 1st and 2nd  category buttons.
+				{
+					//USART_putstring("11C2 ");
+					vote_indicator_11 = 1;	// Indicating button 10 was presses.
+					deactivate_category_buttons_and_save(button11_addr, 11);
+					//i2c_send_byte(PIC_DEV_ADDR, 11);
+					no_of_votes_cat2--;
+				}
+				else if((11 > category_size_2) && (11 <= category_size_3) && (no_of_votes_cat3 != 0))
+				{
+					//USART_putstring("11C3 ");
+					vote_indicator_11 = 1;	// Indicating button 10 was presses.
+					deactivate_category_buttons_and_save(button11_addr, 11);
+					//i2c_send_byte(PIC_DEV_ADDR, 11);
+					no_of_votes_cat3--;
+				}
+				else if((11 > category_size_3) && (11 <= category_size_4) && (no_of_votes_cat4 != 0))
+				{
+					//USART_putstring("11C4 ");
+					vote_indicator_11 = 1;	// Indicating button 10 was presses.
+					deactivate_category_buttons_and_save(button11_addr, 11);
+					//i2c_send_byte(PIC_DEV_ADDR, 11);
+					no_of_votes_cat4--;
+				}
+				else if((11 > category_size_4) && (11 <= category_size_5) && (no_of_votes_cat5 != 0))
+				{
+					//USART_putstring("11C5 ");
+					vote_indicator_11 = 1;	// Indicating button 10 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 11);
+					deactivate_category_buttons_and_save(button11_addr, 11);
+					no_of_votes_cat5--;
+				}
+				else if((11 > category_size_5) && (11 <= category_size_6) && (no_of_votes_cat6 != 0))
+				{
+					//USART_putstring("11C6 ");
+					vote_indicator_11 = 1;	// Indicating button 11 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 11);
+					deactivate_category_buttons_and_save(button11_addr, 11);
+					no_of_votes_cat6--;
+				}
+				else if ((11 > no_of_buttons_in_categories) && (gen_vote_count != 0))
+				{
+					//USART_putstring("11G ");		// comment this out in final product
+					vote_indicator_11 = 1;			// Indicating button 1 was pressed
+					deactivate_category_buttons_and_save(button11_addr, 11);
+					//i2c_send_byte(PIC_DEV_ADDR, 11);
+					gen_vote_count--;
+				}
+			}
+		
+			if ((matrix_A_data == 1) && (matrix_B_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 0) && ((PINC & 0x0F) == 0x0B) && (12 <= candidate_count) && vote_indicator_12==0)// && (gen_vote_count != 10))
+			{
+				if((12 <= category_size_1) && (no_of_votes_cat1 != 0))
+				{
+					//USART_putstring("12C1 ");
+					vote_indicator_12 = 1;	// Indicating button 9 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 12);
+					deactivate_category_buttons_and_save(button12_addr, 12);
+					no_of_votes_cat1--;
+				}
+				else if((12 > category_size_1) && (12 <= category_size_2) && (no_of_votes_cat2 != 0))// check if this button in 2nd category combination of 1st and 2nd  category buttons.
+				{
+					//USART_putstring("12C2 ");
+					vote_indicator_12 = 1;	// Indicating button 12 was presses.
+					deactivate_category_buttons_and_save(button12_addr, 12);
+					//i2c_send_byte(PIC_DEV_ADDR, 12);
+					no_of_votes_cat2--;
+				}
+				else if((12 > category_size_2) && (12 <= category_size_3) && (no_of_votes_cat3 != 0))
+				{
+					//USART_putstring("12C3 ");
+					vote_indicator_12 = 1;	// Indicating button 12 was presses.
+					deactivate_category_buttons_and_save(button12_addr, 12);
+					//i2c_send_byte(PIC_DEV_ADDR, 12);
+					no_of_votes_cat3--;
+				}
+				else if((12 > category_size_3) && (12 <= category_size_4) && (no_of_votes_cat4 != 0))
+				{
+					//USART_putstring("12C4 ");
+					vote_indicator_12 = 1;	// Indicating button 12 was presses.
+					deactivate_category_buttons_and_save(button12_addr, 12);
+					//i2c_send_byte(PIC_DEV_ADDR, 12);
+					no_of_votes_cat4--;
+				}
+				else if((12 > category_size_4) && (12 <= category_size_5) && (no_of_votes_cat5 != 0))
+				{
+					//USART_putstring("12C5 ");
+					vote_indicator_12 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 12);
+					deactivate_category_buttons_and_save(button12_addr, 12);
+					no_of_votes_cat5--;
+				}
+				else if((12 > category_size_5) && (12 <= category_size_6) && (no_of_votes_cat6 != 0))
+				{
+					//USART_putstring("12C6 ");
+					vote_indicator_12 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 12);
+					deactivate_category_buttons_and_save(button12_addr, 12);
+					no_of_votes_cat6--;
+				}
+				else if ((12 > no_of_buttons_in_categories) && (gen_vote_count != 0))
+				{
+					//USART_putstring("12G ");		// comment this out in final product
+					vote_indicator_12 = 1;			// Indicating button 1 was pressed
+					deactivate_category_buttons_and_save(button12_addr, 12);
+					//i2c_send_byte(PIC_DEV_ADDR, 12);
+					gen_vote_count--;
+				}
+			}
+		
+			if ((matrix_A_data == 1) && (matrix_B_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 0) && ((PINC & 0x0F) == 0x0C) && (13 <= candidate_count) && (vote_indicator_13 == 0))// && (gen_vote_count != 10))
+			{
+				if((13 <= category_size_1) && (no_of_votes_cat1 != 0))
+				{
+					//USART_putstring("13C1 ");
+					vote_indicator_13 = 1;	// Indicating button 9 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 13);
+					deactivate_category_buttons_and_save(button13_addr, 13);
+					no_of_votes_cat1--;
+				}
+				else if((13 > category_size_1) && (13 <= category_size_2) && (no_of_votes_cat2 != 0))// check if this button in 2nd category combination of 1st and 2nd  category buttons.
+				{
+					//USART_putstring("13C2 ");
+					vote_indicator_13 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 13);
+					deactivate_category_buttons_and_save(button13_addr, 13);
+					no_of_votes_cat2--;
+				}
+				else if((13 > category_size_2) && (13 <= category_size_3) && (no_of_votes_cat3 != 0))
+				{
+					//USART_putstring("13C3 ");
+					vote_indicator_13 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 13);
+					deactivate_category_buttons_and_save(button13_addr, 13);
+					no_of_votes_cat3--;	
+				}
+				else if((13 > category_size_3) && (13 <= category_size_4) && (no_of_votes_cat4 != 0))
+				{
+					//USART_putstring("13C4 ");
+					vote_indicator_13 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 13);
+					deactivate_category_buttons_and_save(button13_addr, 13);
+					no_of_votes_cat4--;
+				}
+				else if((13 > category_size_4) && (13 <= category_size_5) && (no_of_votes_cat5 != 0))
+				{
+					//USART_putstring("13C5 ");
+					vote_indicator_13 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 13);
+					deactivate_category_buttons_and_save(button13_addr, 13);
+					no_of_votes_cat5--;
+				}
+				else if((13 > category_size_5) && (13 <= category_size_6) && (no_of_votes_cat6 != 0))
+				{
+					//USART_putstring("13C6 ");
+					vote_indicator_13 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 13);
+					deactivate_category_buttons_and_save(button13_addr, 13);
+					no_of_votes_cat6--;
+				}
+				else if((13 > category_size_6) && (13 <= category_size_7) && (no_of_votes_cat7 != 0))
+				{
+					//USART_putstring("13C7 ");
+					vote_indicator_13 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 13);
+					deactivate_category_buttons_and_save(button13_addr, 13);
+					no_of_votes_cat7--;
+				}
+				//else if((13 > category_size_7) && (13 <= category_size_8) && (no_of_votes_cat8 != 0))
+				//{
+					////USART_putstring("13C8 ");
+					//vote_indicator_13 = 1;	// Indicating button 12 was presses.
+					////i2c_send_byte(PIC_DEV_ADDR, 13);
+					//deactivate_category_buttons_and_save(button13_addr, 13);
+					//no_of_votes_cat8--;
+				//}
+				else if ((13 > no_of_buttons_in_categories) && (gen_vote_count != 0))
+				{
+					//USART_putstring("13G ");		// comment this out in final product
+					vote_indicator_13 = 1;			// Indicating button 1 was pressed
+					deactivate_category_buttons_and_save(button13_addr, 13);
+					//i2c_send_byte(PIC_DEV_ADDR, 13);
+					gen_vote_count--;
+				}
+			}
+		
+			if ((matrix_A_data == 1) && (matrix_B_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 0) && ((PINC & 0x0F) == 0x0D) && (14 <= candidate_count) && vote_indicator_14==0)
+			{
+				if((14 <= category_size_1) && (no_of_votes_cat1 != 0))
+				{
+					//USART_putstring("14C1 ");
+					vote_indicator_14 = 1;	// Indicating button 9 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 14);
+					deactivate_category_buttons_and_save(button14_addr, 14);
+					no_of_votes_cat1--;
+				}
+				else if((14 > category_size_1) && (14 <= category_size_2) && (no_of_votes_cat2 != 0))
+				{
+					//USART_putstring("14C2 ");
+					vote_indicator_14 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 14);
+					deactivate_category_buttons_and_save(button14_addr, 14);
+					no_of_votes_cat2--;
+				}
+				else if((14 > category_size_2) && (14 <= category_size_3) && (no_of_votes_cat3 != 0))
+				{
+					//USART_putstring("14C3 ");
+					vote_indicator_14 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 14);
+					deactivate_category_buttons_and_save(button14_addr, 14);
+					no_of_votes_cat3--;
+				}
+				else if((14 > category_size_3) && (14 <= category_size_4) && (no_of_votes_cat4 != 0))
+				{
+					//USART_putstring("14C4 ");
+					vote_indicator_14 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 14);
+					deactivate_category_buttons_and_save(button14_addr, 14);
+					no_of_votes_cat4--;
+				}
+				else if((14 > category_size_4) && (14 <= category_size_5) && (no_of_votes_cat5 != 0))
+				{
+					//USART_putstring("14C5 ");
+					vote_indicator_14 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 14);
+					deactivate_category_buttons_and_save(button14_addr, 14);
+					no_of_votes_cat5--;
+				}
+				else if((14 > category_size_5) && (14 <= category_size_6) && (no_of_votes_cat6 != 0))
+				{
+					//USART_putstring("14C6 ");
+					vote_indicator_14 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 14);
+					deactivate_category_buttons_and_save(button14_addr, 14);
+					no_of_votes_cat6--;
+				}
+				else if((14 > category_size_6) && (14 <= category_size_7) && (no_of_votes_cat7 != 0))
+				{
+					//USART_putstring("14C7 ");
+					vote_indicator_14 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 14);
+					deactivate_category_buttons_and_save(button14_addr, 14);
+					no_of_votes_cat7--;
+				}
+				//else if((14 > category_size_7) && (14 <= category_size_8) && (no_of_votes_cat8 != 0))
+				//{
+					////USART_putstring("14C8 ");
+					//vote_indicator_14 = 1;	// Indicating button 12 was presses.
+					////i2c_send_byte(PIC_DEV_ADDR, 14);
+					//deactivate_category_buttons_and_save(button14_addr, 14);
+					//no_of_votes_cat8--;
+				//}
+				else if ((14 > no_of_buttons_in_categories) && (gen_vote_count != 0))
+				{
+					//USART_putstring("14G ");		// comment this out in final product
+					vote_indicator_14 = 1;			// Indicating button 1 was pressed
+					deactivate_category_buttons_and_save(button14_addr, 14);
+					//i2c_send_byte(PIC_DEV_ADDR, 14);
+					gen_vote_count--;
+				}
+			}
+		
+			if ((matrix_A_data == 1) && (matrix_B_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 0) && ((PINC & 0x0F) == 0x0E) && (15 <= candidate_count) && (vote_indicator_15==0))
+			{
+				if((15 <= category_size_1) && (no_of_votes_cat1 != 0))
+				{
+					//USART_putstring("15C1 ");
+					vote_indicator_15 = 1;	// Indicating button 9 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 15);
+					deactivate_category_buttons_and_save(button15_addr, 15);
+					no_of_votes_cat1--;
+				}
+				else if((15 > category_size_1) && (15 <= category_size_2) && (no_of_votes_cat2 != 0))
+				{
+					//USART_putstring("15C2 ");
+					vote_indicator_15 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 15);
+					deactivate_category_buttons_and_save(button15_addr, 15);
+					no_of_votes_cat2--;
+				}
+				else if((15 > category_size_2) && (15 <= category_size_3) && (no_of_votes_cat3 != 0))
+				{
+					//USART_putstring("15C3 ");
+					vote_indicator_15 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 15);
+					deactivate_category_buttons_and_save(button15_addr, 15);
+					no_of_votes_cat3--;
+				}
+				else if((15 > category_size_3) && (15 <= category_size_4) && (no_of_votes_cat4 != 0))
+				{
+					//USART_putstring("15C4 ");
+					vote_indicator_15 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 15);
+					deactivate_category_buttons_and_save(button15_addr, 15);
+					no_of_votes_cat4--;
+				}
+				else if((15 > category_size_4) && (15 <= category_size_5) && (no_of_votes_cat5 != 0))
+				{
+					//USART_putstring("15C5 ");
+					vote_indicator_15 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 15);
+					deactivate_category_buttons_and_save(button15_addr, 15);
+					no_of_votes_cat5--;
+				}
+				else if((15 > category_size_5) && (15 <= category_size_6) && (no_of_votes_cat6 != 0))
+				{
+					//USART_putstring("15C6 ");
+					vote_indicator_15 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 15);
+					deactivate_category_buttons_and_save(button15_addr, 15);
+					no_of_votes_cat6--;
+				}
+				else if((15 > category_size_6) && (15 <= category_size_7) && (no_of_votes_cat7 != 0))
+				{
+					//USART_putstring("15C7 ");
+					vote_indicator_15 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 15);
+					deactivate_category_buttons_and_save(button15_addr, 15);
+					no_of_votes_cat7--;
+				}
+				//else if((15 > category_size_7) && (15 <= category_size_8) && (no_of_votes_cat8 != 0))
+				//{
+					////USART_putstring("15C8 ");
+					//vote_indicator_15 = 1;	// Indicating button 12 was presses.
+					////i2c_send_byte(PIC_DEV_ADDR, 15);
+					//deactivate_category_buttons_and_save(button15_addr, 15);
+					//no_of_votes_cat8--;
+				//}
+				else if ((15 > no_of_buttons_in_categories) && (gen_vote_count != 0))
+				{
+					//USART_putstring("15G ");		// comment this out in final product
+					vote_indicator_15 = 1;			// Indicating button 1 was pressed
+					deactivate_category_buttons_and_save(button15_addr, 15);
+					//i2c_send_byte(PIC_DEV_ADDR, 15);
+					gen_vote_count--;
+				}
+			}
+		
+			if ((matrix_A_data == 1) && (matrix_B_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 0) && ((PINC & 0x0F) == 0x0F) && (16 <= candidate_count) && vote_indicator_16==0)
+			{
+				if((16 > category_size_1) && (16 <= category_size_2) && (no_of_votes_cat2 != 0))
+				{
+					//USART_putstring("16C2 ");
+					vote_indicator_16 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 16);
+					deactivate_category_buttons_and_save(button16_addr, 16);
+					no_of_votes_cat2--;
+				}
+				else if((16 > category_size_2) && (16 <= category_size_3) && (no_of_votes_cat3 != 0))
+				{
+					//USART_putstring("16C3 ");
+					vote_indicator_16 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 16);
+					deactivate_category_buttons_and_save(button16_addr, 16);
+					no_of_votes_cat3--;
+				}
+				else if((16 > category_size_3) && (16 <= category_size_4) && (no_of_votes_cat4 != 0))
+				{
+					//USART_putstring("16C4 ");
+					vote_indicator_16 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 16);
+					deactivate_category_buttons_and_save(button16_addr, 16);
+					no_of_votes_cat4--;
+				}
+				else if((16 > category_size_4) && (16 <= category_size_5) && (no_of_votes_cat5 != 0))
+				{
+					//USART_putstring("16C5 ");
+					vote_indicator_16 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 16);
+					deactivate_category_buttons_and_save(button16_addr, 16);
+					no_of_votes_cat5--;
+				}
+				else if((16 > category_size_5) && (16 <= category_size_6) && (no_of_votes_cat6 != 0))
+				{
+					//USART_putstring("16C6 ");
+					vote_indicator_16 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 16);
+					deactivate_category_buttons_and_save(button16_addr, 16);
+					no_of_votes_cat6--;
+				}
+				else if((16 > category_size_6) && (16 <= category_size_7) && (no_of_votes_cat7 != 0))
+				{
+					//USART_putstring("16C7 ");
+					vote_indicator_16 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 16);
+					deactivate_category_buttons_and_save(button16_addr, 16);
+					no_of_votes_cat7--;
+				}
+				//else if((16 > category_size_7) && (16 <= category_size_8) && (no_of_votes_cat8 != 0))
+				//{
+					////USART_putstring("16C8 ");
+					//vote_indicator_16 = 1;	// Indicating button 12 was presses.
+					////i2c_send_byte(PIC_DEV_ADDR, 16);
+					//deactivate_category_buttons_and_save(button16_addr, 16);
+					//no_of_votes_cat8--;
+				//}
+				else if ((16 > no_of_buttons_in_categories) && (gen_vote_count != 0))
+				{
+					//USART_putstring("16G ");		// comment this out in final product
+					vote_indicator_16 = 1;			// Indicating button 1 was pressed
+					deactivate_category_buttons_and_save(button16_addr, 16);
+					//i2c_send_byte(PIC_DEV_ADDR, 16);
+					gen_vote_count--;
+				}
+			}
+		
+			if ((matrix_B_data == 1) && (matrix_A_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 0) && ((PINC & 0x0F) == 0x00) && (17 <= candidate_count) && vote_indicator_17==0)
+			{
+				if((17 > category_size_1) && (17 <= category_size_2) && (no_of_votes_cat2 != 0))
+				{
+					//USART_putstring("17C2 ");
+					vote_indicator_17 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 17);
+					deactivate_category_buttons_and_save(button17_addr, 17);
+					no_of_votes_cat2--;
+				}
+				else if((17 > category_size_2) && (17 <= category_size_3) && (no_of_votes_cat3 != 0))
+				{
+					//USART_putstring("17C3 ");
+					vote_indicator_17 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 17);
+					deactivate_category_buttons_and_save(button17_addr, 17);
+					no_of_votes_cat3--;
+				}
+				else if((17 > category_size_3) && (17 <= category_size_4) && (no_of_votes_cat4 != 0))
+				{
+					//USART_putstring("17C4 ");
+					vote_indicator_17 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 17);
+					deactivate_category_buttons_and_save(button17_addr, 17);
+					no_of_votes_cat4--;
+				}
+				else if((17 > category_size_4) && (17 <= category_size_5) && (no_of_votes_cat5 != 0))
+				{
+					//USART_putstring("17C5 ");
+					vote_indicator_17 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 17);
+					deactivate_category_buttons_and_save(button17_addr, 17);
+					no_of_votes_cat5--;
+				}
+				else if((17 > category_size_5) && (17 <= category_size_6) && (no_of_votes_cat6 != 0))
+				{
+					//USART_putstring("17C6 ");
+					vote_indicator_17 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 17);
+					deactivate_category_buttons_and_save(button17_addr, 17);
+					no_of_votes_cat6--;
+				}
+				else if((17 > category_size_6) && (17 <= category_size_7) && (no_of_votes_cat7 != 0))
+				{
+					//USART_putstring("17C7 ");
+					vote_indicator_17 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 17);
+					deactivate_category_buttons_and_save(button17_addr, 17);
+					no_of_votes_cat7--;
+				}
+				//else if((17 > category_size_7) && (17 <= category_size_8) && (no_of_votes_cat8 != 0))
+				//{
+					////USART_putstring("17C8 ");
+					//vote_indicator_17 = 1;	// Indicating button 12 was presses.
+					////i2c_send_byte(PIC_DEV_ADDR, 17);
+					//deactivate_category_buttons_and_save(button17_addr, 17);
+					//no_of_votes_cat8--;
+				//}
+				else if((17 > no_of_buttons_in_categories) && (gen_vote_count != 0))
+				{
+					//USART_putstring("17G ");		// comment this out in final product
+					vote_indicator_17 = 1;			// Indicating button 1 was pressed
+					deactivate_category_buttons_and_save(button17_addr, 17);
+					//i2c_send_byte(PIC_DEV_ADDR, 17);
+					gen_vote_count--;
+				}
+			}
+		
+			if ((matrix_B_data == 1) && (matrix_A_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 0) && ((PINC & 0x0F) == 0x01) && (18 <= candidate_count) && vote_indicator_18==0)
+			{
+				if((18 > category_size_1) && (18 <= category_size_2) && (no_of_votes_cat2 != 0))
+				{
+					//USART_putstring("18C2 ");
+					vote_indicator_18 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 18);
+					deactivate_category_buttons_and_save(button18_addr, 18);
+					no_of_votes_cat2--;
+				}
+				else if((18 > category_size_2) && (18 <= category_size_3) && (no_of_votes_cat3 != 0))
+				{
+					//USART_putstring("18C3 ");
+					vote_indicator_18 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 18);
+					deactivate_category_buttons_and_save(button18_addr, 18);
+					no_of_votes_cat3--;
+				}
+				else if((18 > category_size_3) && (18 <= category_size_4) && (no_of_votes_cat4 != 0))
+				{
+					//USART_putstring("18C4 ");
+					vote_indicator_18 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 18);
+					deactivate_category_buttons_and_save(button18_addr, 18);
+					no_of_votes_cat4--;
+				}
+				else if((18 > category_size_4) && (18 <= category_size_5) && (no_of_votes_cat5 != 0))
+				{
+					//USART_putstring("18C5 ");
+					vote_indicator_18 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 18);
+					deactivate_category_buttons_and_save(button18_addr, 18);
+					no_of_votes_cat5--;
+				}
+				else if((18 > category_size_5) && (18 <= category_size_6) && (no_of_votes_cat6 != 0))
+				{
+					//USART_putstring("18C6 ");
+					vote_indicator_18 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 18);
+					deactivate_category_buttons_and_save(button18_addr, 18);
+					no_of_votes_cat6--;
+				}
+				else if((18 > category_size_6) && (18 <= category_size_7) && (no_of_votes_cat7 != 0))
+				{
+					//USART_putstring("18C7 ");
+					vote_indicator_18 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 18);
+					deactivate_category_buttons_and_save(button18_addr, 18);
+					no_of_votes_cat7--;
+				}
+				//else if((18 > category_size_7) && (18 <= category_size_8) && (no_of_votes_cat8 != 0))
+				//{
+					////USART_putstring("18C8 ");
+					//vote_indicator_18 = 1;	// Indicating button 12 was presses.
+					////i2c_send_byte(PIC_DEV_ADDR, 18);
+					//deactivate_category_buttons_and_save(button18_addr, 18);
+					//no_of_votes_cat8--;
+				//}
+				else if((18 > no_of_buttons_in_categories) && (gen_vote_count != 0))
+				{
+					//USART_putstring("18G ");		// comment this out in final product
+					vote_indicator_18 = 1;			// Indicating button 1 was pressed
+					deactivate_category_buttons_and_save(button18_addr, 18);
+					//i2c_send_byte(PIC_DEV_ADDR, 18);
+					gen_vote_count--;
+				}
+			}
+		
+			if ((matrix_B_data == 1) && (matrix_A_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 0) && ((PINC & 0x0F) == 0x02) && (19 <= candidate_count) && vote_indicator_19==0)
+			{
+				if((19 > category_size_1) && (19 <= category_size_2) && (no_of_votes_cat2 != 0))
+				{
+					//USART_putstring("19C2 ");
+					vote_indicator_19 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 19);
+					deactivate_category_buttons_and_save(button19_addr, 19);
+					no_of_votes_cat2--;
+				}
+				else if((19 > category_size_2) && (19 <= category_size_3) && (no_of_votes_cat3 != 0))
+				{
+					//USART_putstring("19C3 ");
+					vote_indicator_19 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 19);
+					deactivate_category_buttons_and_save(button19_addr, 19);
+					no_of_votes_cat3--;
+				}
+				else if((19 > category_size_3) && (19 <= category_size_4) && (no_of_votes_cat4 != 0))
+				{
+					//USART_putstring("19C4 ");
+					vote_indicator_19 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 19);
+					deactivate_category_buttons_and_save(button19_addr, 19);
+					no_of_votes_cat4--;
+				}
+				else if((19 > category_size_4) && (19 <= category_size_5) && (no_of_votes_cat5 != 0))
+				{
+					//USART_putstring("19C5 ");
+					vote_indicator_19 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 19);
+					deactivate_category_buttons_and_save(button19_addr, 19);
+					no_of_votes_cat5--;
+				}
+				else if((19 > category_size_5) && (19 <= category_size_6) && (no_of_votes_cat6 != 0))
+				{
+					//USART_putstring("19C6 ");
+					vote_indicator_19 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 19);
+					deactivate_category_buttons_and_save(button19_addr, 19);
+					no_of_votes_cat6--;
+				}
+				else if((19 > category_size_6) && (19 <= category_size_7) && (no_of_votes_cat7 != 0))
+				{
+					//USART_putstring("19C7 ");
+					vote_indicator_19 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 19);
+					deactivate_category_buttons_and_save(button19_addr, 19);
+					no_of_votes_cat7--;
+				}
+				//else if((19 > category_size_7) && (19 <= category_size_8) && (no_of_votes_cat8 != 0))
+				//{
+					////USART_putstring("19C8 ");
+					//vote_indicator_19 = 1;	// Indicating button 12 was presses.
+					////i2c_send_byte(PIC_DEV_ADDR, 19);
+					//deactivate_category_buttons_and_save(button19_addr, 19);
+					//no_of_votes_cat8--;
+				//}
+				else if((19 > no_of_buttons_in_categories) && (gen_vote_count != 0))
+				{
+					//USART_putstring("19G ");		// comment this out in final product
+					vote_indicator_19 = 1;			// Indicating button 1 was pressed
+					deactivate_category_buttons_and_save(button19_addr, 19);
+					//i2c_send_byte(PIC_DEV_ADDR, 19);
+					gen_vote_count--;
+				}
+			}
+		
+			if ((matrix_B_data == 1) && (matrix_A_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 0) && ((PINC & 0x0F) == 0x03) && (20 <= candidate_count) && vote_indicator_20==0)
+			{
+				if((20 > category_size_1) && (20 <= category_size_2) && (no_of_votes_cat2 != 0))
+				{
+					//USART_putstring("20C2 ");
+					vote_indicator_20 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 20);
+					deactivate_category_buttons_and_save(button20_addr, 20);
+					no_of_votes_cat2--;
+				}
+				else if((20 > category_size_2) && (20 <= category_size_3) && (no_of_votes_cat3 != 0))
+				{
+					//USART_putstring("20C3 ");
+					vote_indicator_20 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 20);
+					deactivate_category_buttons_and_save(button20_addr, 20);
+					no_of_votes_cat3--;
+				}
+				else if((20 > category_size_3) && (20 <= category_size_4) && (no_of_votes_cat4 != 0))
+				{
+					//USART_putstring("20C4 ");
+					vote_indicator_20 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 20);
+					deactivate_category_buttons_and_save(button20_addr, 20);
+					no_of_votes_cat4--;
+				}
+				else if((20 > category_size_4) && (20 <= category_size_5) && (no_of_votes_cat5 != 0))
+				{
+					//USART_putstring("20C5 ");
+					vote_indicator_20 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 20);
+					deactivate_category_buttons_and_save(button20_addr, 20);
+					no_of_votes_cat5--;
+				}
+				else if((20 > category_size_5) && (20 <= category_size_6) && (no_of_votes_cat6 != 0))
+				{
+					//USART_putstring("20C6 ");
+					vote_indicator_20 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 20);
+					deactivate_category_buttons_and_save(button20_addr, 20);
+					no_of_votes_cat6--;
+				}
+				else if((20 > category_size_6) && (20 <= category_size_7) && (no_of_votes_cat7 != 0))
+				{
+					//USART_putstring("20C7 ");
+					vote_indicator_20 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 20);
+					deactivate_category_buttons_and_save(button20_addr, 20);
+					no_of_votes_cat7--;
+				}
+				//else if((20 > category_size_7) && (20 <= category_size_8) && (no_of_votes_cat8 != 0))
+				//{
+					////USART_putstring("20C8 ");
+					//vote_indicator_20 = 1;	// Indicating button 12 was presses.
+					////i2c_send_byte(PIC_DEV_ADDR, 20);
+					//deactivate_category_buttons_and_save(button20_addr, 20);
+					//no_of_votes_cat8--;
+				//}
+				else if((20 > no_of_buttons_in_categories) && (gen_vote_count != 0))
+				{
+					//USART_putstring("20G ");		// comment this out in final product
+					vote_indicator_20 = 1;			// Indicating button 1 was pressed
+					deactivate_category_buttons_and_save(button20_addr, 20);
+					//i2c_send_byte(PIC_DEV_ADDR, 20);
+					gen_vote_count--;
+				}
+			}
+		
+			if ((matrix_B_data == 1) && (matrix_A_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 0) && ((PINC & 0x0F) == 0x04) && (21 <= candidate_count) && vote_indicator_21==0)
+			{
+				if((21 > category_size_1) && (21 <= category_size_2) && (no_of_votes_cat2 != 0))
+				{
+					//USART_putstring("21C2 ");
+					vote_indicator_21 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 21);
+					deactivate_category_buttons_and_save(button21_addr, 21);
+					no_of_votes_cat2--;
+				}
+				else if((21 > category_size_2) && (21 <= category_size_3) && (no_of_votes_cat3 != 0))
+				{
+					//USART_putstring("21C3 ");
+					vote_indicator_21 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 21);
+					deactivate_category_buttons_and_save(button21_addr, 21);
+					no_of_votes_cat3--;
+				}
+				else if((21 > category_size_3) && (21 <= category_size_4) && (no_of_votes_cat4 != 0))
+				{
+					//USART_putstring("21C4 ");
+					vote_indicator_21 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 21);
+					deactivate_category_buttons_and_save(button21_addr, 21);
+					no_of_votes_cat4--;
+				}
+				else if((21 > category_size_4) && (21 <= category_size_5) && (no_of_votes_cat5 != 0))
+				{
+					//USART_putstring("21C5 ");
+					vote_indicator_21 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 21);
+					deactivate_category_buttons_and_save(button21_addr, 21);
+					no_of_votes_cat5--;
+				}
+				else if((21 > category_size_5) && (21 <= category_size_6) && (no_of_votes_cat6 != 0))
+				{
+					//USART_putstring("21C6 ");
+					vote_indicator_21 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 21);
+					deactivate_category_buttons_and_save(button21_addr, 21);
+					no_of_votes_cat6--;
+				}
+				else if((21 > category_size_6) && (21 <= category_size_7) && (no_of_votes_cat7 != 0))
+				{
+					//USART_putstring("21C7 ");
+					vote_indicator_21 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 21);
+					deactivate_category_buttons_and_save(button21_addr, 21);
+					no_of_votes_cat7--;
+				}
+				//else if((21 > category_size_7) && (21 <= category_size_8) && (no_of_votes_cat8 != 0))
+				//{
+					////USART_putstring("21C8 ");
+					//vote_indicator_21 = 1;	// Indicating button 12 was presses.
+					////i2c_send_byte(PIC_DEV_ADDR, 21);
+					//deactivate_category_buttons_and_save(button21_addr, 21);
+					//no_of_votes_cat8--;
+				//}
+				else if((21 > no_of_buttons_in_categories) && (gen_vote_count != 0))
+				{
+					//USART_putstring("21G ");		// comment this out in final product
+					vote_indicator_21 = 1;			// Indicating button 1 was pressed
+					deactivate_category_buttons_and_save(button21_addr, 21);
+					//i2c_send_byte(PIC_DEV_ADDR, 21);
+					gen_vote_count--;
+				}
+			}
+		
+			if ((matrix_B_data == 1) && (matrix_A_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 0) && ((PINC & 0x0F) == 0x05) && (22 <= candidate_count) && vote_indicator_22==0)
+			{
+				if((22 > category_size_1) && (22 <= category_size_2) && (no_of_votes_cat2 != 0))
+				{
+					//USART_putstring("22C2 ");
+					vote_indicator_22 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 22);
+					deactivate_category_buttons_and_save(button22_addr, 22);
+					no_of_votes_cat2--;
+				}
+				else if((22 > category_size_2) && (21 <= category_size_3) && (no_of_votes_cat3 != 0))
+				{
+					//USART_putstring("22C3 ");
+					vote_indicator_22 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 22);
+					deactivate_category_buttons_and_save(button22_addr, 22);
+					no_of_votes_cat3--;
+				}
+				else if((22 > category_size_3) && (21 <= category_size_4) && (no_of_votes_cat4 != 0))
+				{
+					//USART_putstring("22C4 ");
+					vote_indicator_22 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 22);
+					deactivate_category_buttons_and_save(button22_addr, 22);
+					no_of_votes_cat4--;
+				}
+				else if((22 > category_size_4) && (21 <= category_size_5) && (no_of_votes_cat5 != 0))
+				{
+					//USART_putstring("22C5 ");
+					vote_indicator_22 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 22);
+					deactivate_category_buttons_and_save(button22_addr, 22);
+					no_of_votes_cat5--;
+				}
+				else if((22 > category_size_5) && (21 <= category_size_6) && (no_of_votes_cat6 != 0))
+				{
+					//USART_putstring("22C6");
+					vote_indicator_22 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 22);
+					deactivate_category_buttons_and_save(button22_addr, 22);
+					no_of_votes_cat6--;
+				}
+				else if((22 > category_size_6) && (21 <= category_size_7) && (no_of_votes_cat7 != 0))
+				{
+					//USART_putstring("22C7");
+					vote_indicator_22 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 22);
+					deactivate_category_buttons_and_save(button22_addr, 22);
+					no_of_votes_cat7--;
+				}
+				//else if((22 > category_size_7) && (21 <= category_size_8) && (no_of_votes_cat8 != 0))
+				//{
+					////USART_putstring("22C8");
+					//vote_indicator_22 = 1;	// Indicating button 12 was presses.
+					////i2c_send_byte(PIC_DEV_ADDR, 22);
+					//deactivate_category_buttons_and_save(button22_addr, 22);
+					//no_of_votes_cat8--;
+				//}
+				else if((22 > no_of_buttons_in_categories) && (gen_vote_count != 0))
+				{
+					//USART_putstring("22G ");		// comment this out in final product
+					vote_indicator_22 = 1;			// Indicating button 1 was pressed
+					deactivate_category_buttons_and_save(button22_addr, 22);
+					//i2c_send_byte(PIC_DEV_ADDR, 22);
+					gen_vote_count--;
+				}
+			}
+		
+			if ((matrix_B_data == 1) && (matrix_A_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 0) && ((PINC & 0x0F) == 0x06) && (23 <= candidate_count) && vote_indicator_23==0)
+			{
+				if((23 > category_size_1) && (23 <= category_size_2) && (no_of_votes_cat2 != 0))
+				{
+					//USART_putstring("23C2 ");
+					vote_indicator_23 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 23);
+					deactivate_category_buttons_and_save(button23_addr, 23);
+					no_of_votes_cat2--;
+				}
+				else if((23 > category_size_2) && (23 <= category_size_3) && (no_of_votes_cat3 != 0))
+				{
+					//USART_putstring("23C3 ");
+					vote_indicator_23 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 23);
+					deactivate_category_buttons_and_save(button23_addr, 23);
+					no_of_votes_cat3--;
+				}
+				else if((23 > category_size_3) && (23 <= category_size_4) && (no_of_votes_cat4 != 0))
+				{
+					//USART_putstring("23C4 ");
+					vote_indicator_23 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 23);
+					deactivate_category_buttons_and_save(button23_addr, 23);
+					no_of_votes_cat4--;
+				}
+				else if((23 > category_size_4) && (23 <= category_size_5) && (no_of_votes_cat5 != 0))
+				{
+					//USART_putstring("23C5 ");
+					vote_indicator_23 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 23);
+					deactivate_category_buttons_and_save(button23_addr, 23);
+					no_of_votes_cat5--;
+				}
+				else if((23 > category_size_5) && (23 <= category_size_6) && (no_of_votes_cat6 != 0))
+				{
+					//USART_putstring("23C6 ");
+					vote_indicator_23 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 23);
+					deactivate_category_buttons_and_save(button23_addr, 23);
+					no_of_votes_cat6--;
+				}
+				else if((23 > category_size_6) && (23 <= category_size_7) && (no_of_votes_cat7 != 0))
+				{
+					//USART_putstring("23C7 ");
+					vote_indicator_23 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 23);
+					deactivate_category_buttons_and_save(button23_addr, 23);
+					no_of_votes_cat7--;
+				}
+				else if((23 > category_size_7) && (23 <= category_size_8) && (no_of_votes_cat8 != 0))
+				{
+					//USART_putstring("23C8 ");
+					vote_indicator_23 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 23);
+					deactivate_category_buttons_and_save(button23_addr, 23);
+					no_of_votes_cat8--;
+				}
+				else if((23 > no_of_buttons_in_categories) && (gen_vote_count != 0))
+				{
+					//USART_putstring("23G ");		// comment this out in final product
+					vote_indicator_23 = 1;			// Indicating button 1 was pressed
+					deactivate_category_buttons_and_save(button23_addr, 23);
+					//i2c_send_byte(PIC_DEV_ADDR, 23);
+					gen_vote_count--;
+				}
+			}
+		
+			if ((matrix_B_data == 1) && (matrix_A_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 0) && ((PINC & 0x0F) == 0x07) && (24 <= candidate_count) && vote_indicator_24==0)
+			{
+				if((24 > category_size_1) && (24 <= category_size_2) && (no_of_votes_cat2 != 0))
+				{
+					//USART_putstring("24C2 ");
+					vote_indicator_24 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 24);
+					deactivate_category_buttons_and_save(button24_addr, 24);
+					no_of_votes_cat2--;
+				}
+				else if((24 > category_size_2) && (24 <= category_size_3) && (no_of_votes_cat3 != 0))
+				{
+					//USART_putstring("24C3 ");
+					vote_indicator_24 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 24);
+					deactivate_category_buttons_and_save(button24_addr, 24);
+					no_of_votes_cat3--;
+				}
+				else if((24 > category_size_3) && (24 <= category_size_4) && (no_of_votes_cat4 != 0))
+				{
+					//USART_putstring("24C4 ");
+					vote_indicator_24 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 24);
+					deactivate_category_buttons_and_save(button24_addr, 24);
+					no_of_votes_cat4--;
+				}
+				else if((24 > category_size_4) && (24 <= category_size_5) && (no_of_votes_cat5 != 0))
+				{
+					//USART_putstring("24C5 ");
+					vote_indicator_24 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 24);
+					deactivate_category_buttons_and_save(button24_addr, 24);
+					no_of_votes_cat5--;
+				}
+				else if((24 > category_size_5) && (24 <= category_size_6) && (no_of_votes_cat6 != 0))
+				{
+					//USART_putstring("24C6 ");
+					vote_indicator_24 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 24);
+					deactivate_category_buttons_and_save(button24_addr, 24);
+					no_of_votes_cat6--;
+				}
+				else if((24 > category_size_6) && (24 <= category_size_7) && (no_of_votes_cat7 != 0))
+				{
+					//USART_putstring("24C7 ");
+					vote_indicator_24 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 24);
+					deactivate_category_buttons_and_save(button24_addr, 24);
+					no_of_votes_cat7--;
+				}
+				//else if((24 > category_size_7) && (24 <= category_size_8) && (no_of_votes_cat8 != 0))
+				//{
+					////USART_putstring("24C8 ");
+					//vote_indicator_24 = 1;	// Indicating button 12 was presses.
+					////i2c_send_byte(PIC_DEV_ADDR, 24);
+					//deactivate_category_buttons_and_save(button24_addr, 24);
+					//no_of_votes_cat8--;
+				//}
+				else if((24 > no_of_buttons_in_categories) && (gen_vote_count != 0))
+				{
+					//USART_putstring("24G ");		// comment this out in final product
+					vote_indicator_24 = 1;			// Indicating button 1 was pressed
+					deactivate_category_buttons_and_save(button24_addr, 24);
+					//i2c_send_byte(PIC_DEV_ADDR, 24);
+					gen_vote_count--;
+				}
+			}
+		
+			if ((matrix_B_data == 1) && (matrix_A_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 0) && ((PINC & 0x0F) == 0x08) && (25 <= candidate_count) && vote_indicator_25==0)
+			{
+				if((25 > category_size_1) && (25 <= category_size_2) && (no_of_votes_cat2 != 0))
+				{
+					//USART_putstring("25C2 ");
+					vote_indicator_25 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 25);
+					deactivate_category_buttons_and_save(button25_addr, 25);
+					no_of_votes_cat2--;
+				}
+				else if((25 > category_size_2) && (25 <= category_size_3) && (no_of_votes_cat3 != 0))
+				{
+					//USART_putstring("25C3 ");
+					vote_indicator_25 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 25);
+					deactivate_category_buttons_and_save(button25_addr, 25);
+					no_of_votes_cat3--;
+				}
+				else if((25 > category_size_3) && (25 <= category_size_4) && (no_of_votes_cat4 != 0))
+				{
+					//USART_putstring("25C4 ");
+					vote_indicator_25 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 25);
+					deactivate_category_buttons_and_save(button25_addr, 25);
+					no_of_votes_cat4--;
+				}
+				else if((25 > category_size_4) && (25 <= category_size_5) && (no_of_votes_cat5 != 0))
+				{
+					//USART_putstring("25C5 ");
+					vote_indicator_25 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 25);
+					deactivate_category_buttons_and_save(button25_addr, 25);
+					no_of_votes_cat5--;
+				}
+				else if((25 > category_size_5) && (25 <= category_size_6) && (no_of_votes_cat6 != 0))
+				{
+					//USART_putstring("25C6 ");
+					vote_indicator_25 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 25);
+					deactivate_category_buttons_and_save(button25_addr, 25);
+					no_of_votes_cat6--;
+				}
+				else if((25 > category_size_6) && (25 <= category_size_7) && (no_of_votes_cat7 != 0))
+				{
+					//USART_putstring("25C7 ");
+					vote_indicator_25 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 25);
+					deactivate_category_buttons_and_save(button25_addr, 25);
+					no_of_votes_cat7--;
+				}
+				//else if((25 > category_size_7) && (25 <= category_size_8) && (no_of_votes_cat8 != 0))
+				//{
+					////USART_putstring("25C8 ");
+					//vote_indicator_25 = 1;	// Indicating button 12 was presses.
+					////i2c_send_byte(PIC_DEV_ADDR, 25);
+					//deactivate_category_buttons_and_save(button25_addr, 25);
+					//no_of_votes_cat8--;
+				//}
+				else if((25 > no_of_buttons_in_categories) && (gen_vote_count != 0))
+				{
+					//USART_putstring("25G ");		// comment this out in final product
+					vote_indicator_25 = 1;			// Indicating button 1 was pressed
+					deactivate_category_buttons_and_save(button25_addr, 25);
+					//i2c_send_byte(PIC_DEV_ADDR, 25);
+					gen_vote_count--;
+				}
+			}
+		
+			if ((matrix_B_data == 1) && (matrix_A_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 0) && ((PINC & 0x0F) == 0x09) && (26 <= candidate_count) && vote_indicator_26 == 0)
+			{
+				if((26 > category_size_1) && (26 <= category_size_2) && (no_of_votes_cat2 != 0))
+				{
+					//USART_putstring("26C2 ");
+					vote_indicator_26 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 26);
+					deactivate_category_buttons_and_save(button26_addr, 26);
+					no_of_votes_cat2--;
+				}
+				else if((26 > category_size_2) && (26 <= category_size_3) && (no_of_votes_cat3 != 0))
+				{
+					//USART_putstring("26C3 ");
+					vote_indicator_26 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 26);
+					deactivate_category_buttons_and_save(button26_addr, 26);
+					no_of_votes_cat3--;
+				}
+				else if((26 > category_size_3) && (26 <= category_size_4) && (no_of_votes_cat4 != 0))
+				{
+					//USART_putstring("26C4 ");
+					vote_indicator_26 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 26);
+					deactivate_category_buttons_and_save(button26_addr, 26);
+					no_of_votes_cat4--;
+				}
+				else if((26 > category_size_4) && (26 <= category_size_5) && (no_of_votes_cat5 != 0))
+				{
+					//USART_putstring("26C5 ");
+					vote_indicator_26 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 26);
+					deactivate_category_buttons_and_save(button26_addr, 26);
+					no_of_votes_cat5--;
+				}
+				else if((26 > category_size_5) && (26 <= category_size_6) && (no_of_votes_cat6 != 0))
+				{
+					//USART_putstring("26C6 ");
+					vote_indicator_26 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 26);
+					deactivate_category_buttons_and_save(button26_addr, 26);
+					no_of_votes_cat6--;
+				}
+				else if((26 > category_size_6) && (26 <= category_size_7) && (no_of_votes_cat7 != 0))
+				{
+					//USART_putstring("26C7 ");
+					vote_indicator_26 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 26);
+					deactivate_category_buttons_and_save(button26_addr, 26);
+					no_of_votes_cat7--;
+				}
+				else if((26 > category_size_7) && (26 <= category_size_8) && (no_of_votes_cat8 != 0))
+				{
+					//USART_putstring("26C8 ");
+					vote_indicator_26 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 26);
+					deactivate_category_buttons_and_save(button26_addr, 26);
+					no_of_votes_cat8--;
+				}
+				else if((26 > no_of_buttons_in_categories) && (gen_vote_count != 0))
+				{
+					//USART_putstring("26G ");		// comment this out in final product
+					vote_indicator_26 = 1;			// Indicating button 1 was pressed
+					deactivate_category_buttons_and_save(button26_addr, 26);
+					//i2c_send_byte(PIC_DEV_ADDR, 26);
+					gen_vote_count--;
+				}
+			}
+		
+			if ((matrix_B_data == 1) && (matrix_A_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 0) && ((PINC & 0x0F) == 0x0A) && (27 <= candidate_count) && vote_indicator_27==0)
+			{
+				if((27 > category_size_1) && (27 <= category_size_2) && (no_of_votes_cat2 != 0))
+				{
+					//USART_putstring("27C2 ");
+					vote_indicator_27 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 27);
+					deactivate_category_buttons_and_save(button27_addr, 27);
+					no_of_votes_cat2--;
+				}
+				else if((27 > category_size_2) && (27 <= category_size_3) && (no_of_votes_cat3 != 0))
+				{
+					//USART_putstring("27C3 ");
+					vote_indicator_27 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 27);
+					deactivate_category_buttons_and_save(button27_addr, 27);
+					no_of_votes_cat3--;
+				}
+				else if((27 > category_size_3) && (27 <= category_size_4) && (no_of_votes_cat4 != 0))
+				{
+					//USART_putstring("27C4 ");
+					vote_indicator_27 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 27);
+					deactivate_category_buttons_and_save(button27_addr, 27);
+					no_of_votes_cat4--;
+				}
+				else if((27 > category_size_4) && (27 <= category_size_5) && (no_of_votes_cat5 != 0))
+				{
+					//USART_putstring("27C5 ");
+					vote_indicator_27 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 27);
+					deactivate_category_buttons_and_save(button27_addr, 27);
+					no_of_votes_cat5--;
+				}
+				else if((27 > category_size_5) && (27 <= category_size_6) && (no_of_votes_cat6 != 0))
+				{
+					//USART_putstring("27C6 ");
+					vote_indicator_27 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 27);
+					deactivate_category_buttons_and_save(button27_addr, 27);
+					no_of_votes_cat6--;
+				}
+				else if((27 > category_size_6) && (27 <= category_size_7) && (no_of_votes_cat7 != 0))
+				{
+					//USART_putstring("27C7 ");
+					vote_indicator_27 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 27);
+					deactivate_category_buttons_and_save(button27_addr, 27);
+					no_of_votes_cat7--;
+				}
+				//else if((27 > category_size_7) && (27 <= category_size_8) && (no_of_votes_cat8 != 0))
+				//{
+					////USART_putstring("27C8 ");
+					//vote_indicator_27 = 1;	// Indicating button 12 was presses.
+					////i2c_send_byte(PIC_DEV_ADDR, 27);
+					//deactivate_category_buttons_and_save(button27_addr, 27);
+					//no_of_votes_cat8--;
+				//}
+				else if((27 > no_of_buttons_in_categories) && (gen_vote_count != 0))
+				{
+					//USART_putstring("27G ");		// comment this out in final product
+					vote_indicator_27 = 1;			// Indicating button 1 was pressed
+					deactivate_category_buttons_and_save(button27_addr, 27);
+					//i2c_send_byte(PIC_DEV_ADDR, 27);
+					gen_vote_count--;
+				}
+			}
+		
+			if ((matrix_B_data == 1) && (matrix_A_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 0) && ((PINC & 0x0F) == 0x0B) && (28 <= candidate_count) && vote_indicator_28==0)
+			{
+				if((28 > category_size_1) && (28 <= category_size_2) && (no_of_votes_cat2 != 0))
+				{
+					//USART_putstring("28C2 ");
+					vote_indicator_28 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 28);
+					deactivate_category_buttons_and_save(button28_addr, 28);
+					no_of_votes_cat2--;
+				}
+				else if((28 > category_size_2) && (28 <= category_size_3) && (no_of_votes_cat3 != 0))
+				{
+					//USART_putstring("28C3 ");
+					vote_indicator_28 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 28);
+					deactivate_category_buttons_and_save(button28_addr, 28);
+					no_of_votes_cat3--;
+				}
+				else if((28 > category_size_3) && (28 <= category_size_4) && (no_of_votes_cat4 != 0))
+				{
+					//USART_putstring("28C4 ");
+					vote_indicator_28 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 28);
+					deactivate_category_buttons_and_save(button28_addr, 28);
+					no_of_votes_cat4--;
+				}
+				else if((28 > category_size_4) && (28 <= category_size_5) && (no_of_votes_cat5 != 0))
+				{
+					//USART_putstring("28C5 ");
+					vote_indicator_28 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 28);
+					deactivate_category_buttons_and_save(button28_addr, 28);
+					no_of_votes_cat5--;
+				}
+				else if((28 > category_size_5) && (28 <= category_size_6) && (no_of_votes_cat6 != 0))
+				{
+					//USART_putstring("28C6");
+					vote_indicator_28 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 28);
+					deactivate_category_buttons_and_save(button28_addr, 28);
+					no_of_votes_cat6--;
+				}
+				else if((28 > category_size_6) && (28 <= category_size_7) && (no_of_votes_cat7 != 0))
+				{
+					//USART_putstring("28C7");
+					vote_indicator_28 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 28);
+					deactivate_category_buttons_and_save(button28_addr, 28);
+					no_of_votes_cat7--;
+				}
+				//else if((28 > category_size_7) && (28 <= category_size_8) && (no_of_votes_cat8 != 0))
+				//{
+					////USART_putstring("28C8");
+					//vote_indicator_28 = 1;	// Indicating button 12 was presses.
+					////i2c_send_byte(PIC_DEV_ADDR, 28);
+					//deactivate_category_buttons_and_save(button28_addr, 28);
+					//no_of_votes_cat8--;
+				//}
+				else if((28 > no_of_buttons_in_categories) && (gen_vote_count != 0))
+				{
+					//USART_putstring("28G ");		// comment this out in final product
+					vote_indicator_28 = 1;			// Indicating button 1 was pressed
+					deactivate_category_buttons_and_save(button28_addr, 28);
+					//i2c_send_byte(PIC_DEV_ADDR, 28);
+					gen_vote_count--;
+				}
+			}
+		
+			if ((matrix_B_data == 1) && (matrix_A_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 0) && ((PINC & 0x0F) == 0x0C) && (29 <= candidate_count) && vote_indicator_29 == 0)
+			{
+				if((29 > category_size_1) && (29 <= category_size_2) && (no_of_votes_cat2 != 0))
+				{
+					//USART_putstring("29C2 ");
+					vote_indicator_29 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 29);
+					deactivate_category_buttons_and_save(button29_addr, 29);
+					no_of_votes_cat2--;
+				}
+				else if((29 > category_size_2) && (29 <= category_size_3) && (no_of_votes_cat3 != 0))
+				{
+					//USART_putstring("29C3 ");
+					vote_indicator_29 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 29);
+					deactivate_category_buttons_and_save(button29_addr, 29);
+					no_of_votes_cat3--;
+				}
+				else if((29 > category_size_3) && (29 <= category_size_4) && (no_of_votes_cat4 != 0))
+				{
+					//USART_putstring("29C4 ");
+					vote_indicator_29 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 29);
+					deactivate_category_buttons_and_save(button29_addr, 29);
+					no_of_votes_cat4--;
+				}
+				else if((29 > category_size_4) && (29 <= category_size_5) && (no_of_votes_cat5 != 0))
+				{
+					//USART_putstring("29C5 ");
+					vote_indicator_29 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 29);
+					deactivate_category_buttons_and_save(button29_addr, 29);
+					no_of_votes_cat5--;
+				}
+				else if((29 > category_size_5) && (29 <= category_size_6) && (no_of_votes_cat6 != 0))
+				{
+					//USART_putstring("29C6 ");
+					vote_indicator_29 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 29);
+					deactivate_category_buttons_and_save(button29_addr, 29);
+					no_of_votes_cat6--;
+				}
+				else if((29 > category_size_6) && (29 <= category_size_7) && (no_of_votes_cat7 != 0))
+				{
+					//USART_putstring("29C7 ");
+					vote_indicator_29 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 29);
+					deactivate_category_buttons_and_save(button29_addr, 29);
+					no_of_votes_cat7--;
+				}
+				//else if((29 > category_size_7) && (29 <= category_size_8) && (no_of_votes_cat8 != 0))
+				//{
+					////USART_putstring("29C8 ");
+					//vote_indicator_29 = 1;	// Indicating button 12 was presses.
+					////i2c_send_byte(PIC_DEV_ADDR, 29);
+					//deactivate_category_buttons_and_save(button29_addr, 29);
+					//no_of_votes_cat8--;
+				//}
+				else if((29 > no_of_buttons_in_categories) && (gen_vote_count != 0))
+				{
+					//USART_putstring("29G ");		// comment this out in final product
+					vote_indicator_29 = 1;			// Indicating button 1 was pressed
+					deactivate_category_buttons_and_save(button29_addr, 29);
+					//i2c_send_byte(PIC_DEV_ADDR, 29);
+					gen_vote_count--;
+				}
+			}
+		
+			if ((matrix_B_data == 1) && (matrix_A_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 0) && ((PINC & 0x0F) == 0x0D) && (30 <= candidate_count) && vote_indicator_30==0)
+			{
+				if((30 > category_size_1) && (30 <= category_size_2) && (no_of_votes_cat2 != 0))
+				{
+					//USART_putstring("30C2 ");
+					vote_indicator_30 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 30);
+					deactivate_category_buttons_and_save(button30_addr, 30);
+					no_of_votes_cat2--;
+				}
+				else if((30 > category_size_2) && (30 <= category_size_3) && (no_of_votes_cat3 != 0))
+				{
+					//USART_putstring("30C3 ");
+					vote_indicator_30 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 30);
+					deactivate_category_buttons_and_save(button30_addr, 30);
+					no_of_votes_cat3--;
+				}
+				else if((30 > category_size_3) && (30 <= category_size_4) && (no_of_votes_cat4 != 0))
+				{
+					//USART_putstring("30C4 ");
+					vote_indicator_30 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 30);
+					deactivate_category_buttons_and_save(button30_addr, 30);
+					no_of_votes_cat4--;
+				}
+				else if((30 > category_size_4) && (30 <= category_size_5) && (no_of_votes_cat5 != 0))
+				{
+					//USART_putstring("30C5 ");
+					vote_indicator_30 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 30);
+					deactivate_category_buttons_and_save(button30_addr, 30);
+					no_of_votes_cat5--;
+				}
+				else if((30 > category_size_5) && (30 <= category_size_6) && (no_of_votes_cat6 != 0))
+				{
+					//USART_putstring("30C6 ");
+					vote_indicator_30 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 30);
+					deactivate_category_buttons_and_save(button30_addr, 30);
+					no_of_votes_cat6--;
+				}
+				else if((30 > category_size_6) && (30 <= category_size_7) && (no_of_votes_cat7 != 0))
+				{
+					//USART_putstring("30C7 ");
+					vote_indicator_30 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 30);
+					deactivate_category_buttons_and_save(button30_addr, 30);
+					no_of_votes_cat7--;
+				}
+				else if((30 > category_size_7) && (30 <= category_size_8) && (no_of_votes_cat8 != 0))
+				{
+					//USART_putstring("30C8 ");
+					vote_indicator_30 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 30);
+					deactivate_category_buttons_and_save(button30_addr, 30);
+					no_of_votes_cat8--;
+				}
+				else if((30 > no_of_buttons_in_categories) && (gen_vote_count != 0))
+				{
+					//USART_putstring("30G ");		// comment this out in final product
+					vote_indicator_30 = 1;			// Indicating button 1 was pressed
+					deactivate_category_buttons_and_save(button30_addr, 30);
+					//i2c_send_byte(PIC_DEV_ADDR, 30);
+					gen_vote_count--;
+				}
+			}
+		
+			if ((matrix_B_data == 1) && (matrix_A_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 0) && ((PINC & 0x0F) == 0x0E) && (31 <= candidate_count) && vote_indicator_31==0)
+			{
+				if((31 > category_size_2) && (31 <= category_size_3) && (no_of_votes_cat3 != 0))
+				{
+					//USART_putstring("31C3 ");
+					vote_indicator_31 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 31);
+					deactivate_category_buttons_and_save(button31_addr, 31);
+					no_of_votes_cat3--;
+				}
+				if((31 > category_size_3) && (31 <= category_size_4) && (no_of_votes_cat4 != 0))
+				{
+					//USART_putstring("31C4 ");
+					vote_indicator_31 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 31);
+					deactivate_category_buttons_and_save(button31_addr, 31);
+					no_of_votes_cat4--;
+				}
+				else if((31 > category_size_4) && (31 <= category_size_5) && (no_of_votes_cat5 != 0))
+				{
+					//USART_putstring("31C5 ");
+					vote_indicator_31 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 31);
+					deactivate_category_buttons_and_save(button31_addr, 31);
+					no_of_votes_cat5--;
+				}
+				else if((31 > category_size_5) && (31 <= category_size_6) && (no_of_votes_cat6 != 0))
+				{
+					//USART_putstring("31C6 ");
+					vote_indicator_31 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 31);
+					deactivate_category_buttons_and_save(button31_addr, 31);
+					no_of_votes_cat6--;
+				}
+				else if((31 > category_size_6) && (31 <= category_size_7) && (no_of_votes_cat7 != 0))
+				{
+					//USART_putstring("31C7 ");
+					vote_indicator_31 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 31);
+					deactivate_category_buttons_and_save(button31_addr, 31);
+					no_of_votes_cat7--;
+				}
+				//else if((31 > category_size_7) && (31 <= category_size_8) && (no_of_votes_cat8 != 0))
+				//{
+					//USART_putstring("31C8 ");
+					//vote_indicator_31 = 1;	// Indicating button 12 was presses.
+					////i2c_send_byte(PIC_DEV_ADDR, 31);
+					//deactivate_category_buttons_and_save(button31_addr, 31);
+					//no_of_votes_cat8--;
+				//}
+				else if((31 > no_of_buttons_in_categories) && (gen_vote_count != 0))
+				{
+					//USART_putstring("31G ");		// comment this out in final product
+					vote_indicator_31 = 1;			// Indicating button 1 was pressed
+					deactivate_category_buttons_and_save(button31_addr, 31);
+					//i2c_send_byte(PIC_DEV_ADDR, 31);
+					gen_vote_count--;
+				}
+			}
+		
+			if ((matrix_B_data == 1) && (matrix_A_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 0) && ((PINC & 0x0F) == 0x0F) && (32 <= candidate_count) && vote_indicator_32==0)
+			{
+				if((32 > category_size_2) && (32 <= category_size_3) && (no_of_votes_cat3 != 0))
+				{
+					//USART_putstring("32C3 ");
+					vote_indicator_32 = 1;		// Indicating button 32 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 32);
+					deactivate_category_buttons_and_save(button32_addr, 32);
+					no_of_votes_cat3--;
+				}
+				if((32 > category_size_3) && (32 <= category_size_4) && (no_of_votes_cat4 != 0))
+				{
+					//USART_putstring("32C4 ");
+					vote_indicator_32 = 1;		// Indicating button 32 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 32);
+					deactivate_category_buttons_and_save(button32_addr, 32);
+					no_of_votes_cat4--;
+				}
+				else if((32 > category_size_4) && (32 <= category_size_5) && (no_of_votes_cat5 != 0))
+				{
+					//USART_putstring("32 C 5");
+					vote_indicator_32 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 32);
+					deactivate_category_buttons_and_save(button32_addr, 32);
+					no_of_votes_cat5--;
+				}
+				else if((32 > category_size_5) && (32 <= category_size_6) && (no_of_votes_cat6 != 0))
+				{
+					//USART_putstring("32C6 ");
+					vote_indicator_32 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 32);
+					deactivate_category_buttons_and_save(button32_addr, 32);
+					no_of_votes_cat6--;
+				}
+				else if((32 > category_size_6) && (32 <= category_size_7) && (no_of_votes_cat7 != 0))
+				{
+					//USART_putstring("32C7 ");
+					vote_indicator_32 = 1;	// Indicating button 12 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 32);
+					deactivate_category_buttons_and_save(button32_addr, 32);
+					no_of_votes_cat7--;
+				}
+				//else if((32 > category_size_7) && (32 <= category_size_8) && (no_of_votes_cat8 != 0))
+				//{
+					////USART_putstring("32C8 ");
+					//vote_indicator_32 = 1;	// Indicating button 12 was presses.
+					////i2c_send_byte(PIC_DEV_ADDR, 32);
+					//deactivate_category_buttons_and_save(button32_addr, 32);
+					//no_of_votes_cat8--;
+				//}
+				else if((32 > no_of_buttons_in_categories) && (gen_vote_count != 0))
+				{
+					//USART_putstring("32G ");		// comment this out in final product
+					vote_indicator_32 = 1;			// Indicating button 1 was pressed
+					deactivate_category_buttons_and_save(button32_addr, 32);
+					//i2c_send_byte(PIC_DEV_ADDR, 32);
+					gen_vote_count--;
+				}
+			}
+	/************************************************  Half Mark  ***********************************************************************************/		
+			if ((matrix_A_data == 0) && (matrix_B_data == 0) && (matrix_C_data == 1) && (matrix_D_data == 0) && ((PINC & 0x0F) == 0x00) && (33 <= candidate_count) && vote_indicator_33 == 0)
+			{
+				if((33 > category_size_2) && (33 <= category_size_3) && (no_of_votes_cat3 != 0x00))
+				{
+					//USART_putstring("33C3 ");
+					vote_indicator_33 = 1;					// Indicating button 33 was presses.
+					//i2c_send_byte(PIC_DEV_ADDR, 33);
+					deactivate_category_buttons_and_save(button33_addr, 33);
+					no_of_votes_cat3--;
+				}
+				else if((33 > category_size_3) && (33 <= category_size_4) && (no_of_votes_cat4 != 0x00))				
+				{
+					//USART_putstring("33C4 ");			// comment this out in final product
+					vote_indicator_33 = 1;					// Indicating button 33 was pressed
+					no_of_votes_cat4--;
+					//i2c_send_byte(PIC_DEV_ADDR, 33);
+					deactivate_category_buttons_and_save(button33_addr, 33);  // provide starting and ending buttons as arguments
+				}
+				else if((33 > category_size_4) && (33 <= category_size_5) && (no_of_votes_cat5 != 0x00))				
+				{
+					//USART_putstring("33C5 ");				// comment this out in final product
+					vote_indicator_33 = 1;					// Indicating button 33 was pressed
+					no_of_votes_cat5--;
+					//i2c_send_byte(PIC_DEV_ADDR, 33);
+					deactivate_category_buttons_and_save(button33_addr, 33);  // provide starting and ending buttons as arguments
+				}
+				else if((33 > category_size_5) && (33 <= category_size_6) && (no_of_votes_cat6 != 0x00))				
+				{	
+					//USART_putstring("33C6 ");				// comment this out in final product
+					vote_indicator_33 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat6--;
+					//i2c_send_byte(PIC_DEV_ADDR, 33);
+					deactivate_category_buttons_and_save(button33_addr, 33);  // provide starting and ending buttons as arguments
+				}
+				else if((33 > category_size_6) && (33 <= category_size_7) && (no_of_votes_cat7 != 0x00))
+				{
+					//USART_putstring("33C7 ");				// comment this out in final product
+					vote_indicator_33 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat7--;
+					//i2c_send_byte(PIC_DEV_ADDR, 33);
+					deactivate_category_buttons_and_save(button33_addr, 33);  // provide starting and ending buttons as arguments
+				}
+				//else if((33 > category_size_7) && (33 <= category_size_8) && (no_of_votes_cat8 != 0x00))
+				//{
+					////USART_putstring("33C8 ");				// comment this out in final product
+					//vote_indicator_33 = 1;					// Indicating button 1 was pressed
+					//no_of_votes_cat8--;
+					////i2c_send_byte(PIC_DEV_ADDR, 33);
+					//deactivate_category_buttons_and_save(button33_addr, 33);  // provide starting and ending buttons as arguments
+				//}
+				else if ((33 > no_of_buttons_in_categories) && (gen_vote_count != 0))
+				{
+					//USART_putstring("33 G ");		// comment this out in final product
+					vote_indicator_33 = 1;			// Indicating button 1 was pressed
+					deactivate_category_buttons_and_save(button33_addr, 33);
+					//i2c_send_byte(PIC_DEV_ADDR, 33);
+					gen_vote_count--;
+				}
+			}
+		
+			if ((matrix_A_data == 0) && (matrix_B_data == 0) && (matrix_C_data == 1) && (matrix_D_data == 0) && ((PINC & 0x0F) == 0x01) && (34 <= candidate_count) && vote_indicator_34 == 0)
+			{
+				if((34 > category_size_2) && (34 <= category_size_3) && (no_of_votes_cat3 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("34C3 ");				// comment this out in final product
+					vote_indicator_34 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat3--;
+					//i2c_send_byte(PIC_DEV_ADDR, 34);
+					deactivate_category_buttons_and_save(button34_addr, 34);  // provide starting and ending buttons as arguments
+				}
+				else if((34 > category_size_3) && (34 <= category_size_4) && (no_of_votes_cat4 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("34C4 ");				// comment this out in final product
+					vote_indicator_34 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat4--;
+					//i2c_send_byte(PIC_DEV_ADDR, 34);
+					deactivate_category_buttons_and_save(button34_addr, 34);  // provide starting and ending buttons as arguments
+				}
+				else if((34 > category_size_4) && (34 <= category_size_5) && (no_of_votes_cat5 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("34C5 ");				// comment this out in final product
+					vote_indicator_34 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat5--;
+					//i2c_send_byte(PIC_DEV_ADDR, 34);
+					deactivate_category_buttons_and_save(button34_addr, 34);  // provide starting and ending buttons as arguments
+				}
+				else if((34 > category_size_5) && (34 <= category_size_6) && (no_of_votes_cat6 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("34C6 ");				// comment this out in final product
+					vote_indicator_34 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat6--;
+					//i2c_send_byte(PIC_DEV_ADDR, 34);
+					deactivate_category_buttons_and_save(button34_addr, 34);  // provide starting and ending buttons as arguments
+				}
+				else if((34 > category_size_6) && (34 <= category_size_7) && (no_of_votes_cat7 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("34C7 ");				// comment this out in final product
+					vote_indicator_34 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat7--;
+					//i2c_send_byte(PIC_DEV_ADDR, 34);
+					deactivate_category_buttons_and_save(button34_addr, 34);  // provide starting and ending buttons as arguments
+				}
+				//else if((34 > category_size_7) && (34 <= category_size_8) && (no_of_votes_cat6 != 0x00))				// Mask out the MSB nibble.
+				//{
+					////USART_putstring("34C8 ");				// comment this out in final product
+					//vote_indicator_34 = 1;					// Indicating button 1 was pressed
+					//no_of_votes_cat8--;
+					////i2c_send_byte(PIC_DEV_ADDR, 34);
+					//deactivate_category_buttons_and_save(button34_addr, 34);  // provide starting and ending buttons as arguments
+				//}
+				else if ((34 > no_of_buttons_in_categories) && (gen_vote_count != 0))
+				{
+					//USART_putstring("34G ");		// comment this out in final product
+					vote_indicator_34 = 1;			// Indicating button 1 was pressed
+					deactivate_category_buttons_and_save(button34_addr, 34);
+					//i2c_send_byte(PIC_DEV_ADDR, 34);
+					gen_vote_count--;
+				}
+			}
+		
+			if ((matrix_A_data == 0) && (matrix_B_data == 0) && (matrix_C_data == 1) && (matrix_D_data == 0) && ((PINC & 0x0F) == 0x02)  && (35 <= candidate_count) && vote_indicator_35 == 0)
+			{
+				if((35 > category_size_2) && (35 <= category_size_3) && (no_of_votes_cat3 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("35C3 ");				// comment this out in final product
+					vote_indicator_35 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat3--;
+					//i2c_send_byte(PIC_DEV_ADDR, 35);
+					deactivate_category_buttons_and_save(button35_addr, 35);  // provide starting and ending buttons as arguments
+				}
+				else if((35 > category_size_3) && (35 <= category_size_4) && (no_of_votes_cat4 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("35C4 ");				// comment this out in final product
+					vote_indicator_35 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat4--;
+					//i2c_send_byte(PIC_DEV_ADDR, 35);
+					deactivate_category_buttons_and_save(button35_addr, 35);  // provide starting and ending buttons as arguments
+				}
+				else if((35 > category_size_4) && (35 <= category_size_5) && (no_of_votes_cat5 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("35C5 ");				// comment this out in final product
+					vote_indicator_35 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat5--;
+					//i2c_send_byte(PIC_DEV_ADDR, 35);
+					deactivate_category_buttons_and_save(button35_addr, 35);  // provide starting and ending buttons as arguments
+				}
+				else if((35 > category_size_5) && (35 <= category_size_6) && (no_of_votes_cat6 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("35C6 ");				// comment this out in final product
+					vote_indicator_35 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat6--;
+					//i2c_send_byte(PIC_DEV_ADDR, 35);
+					deactivate_category_buttons_and_save(button35_addr, 35);  // provide starting and ending buttons as arguments
+				}
+				else if((35 > category_size_6) && (35 <= category_size_7) && (no_of_votes_cat7 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("35C7 ");				// comment this out in final product
+					vote_indicator_35 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat7--;
+					//i2c_send_byte(PIC_DEV_ADDR, 35);
+					deactivate_category_buttons_and_save(button35_addr, 35);  // provide starting and ending buttons as arguments
+				}
+				//else if((35 > category_size_7) && (35 <= category_size_8) && (no_of_votes_cat8 != 0x00))				// Mask out the MSB nibble.
+				//{
+					////USART_putstring("35C8 ");				// comment this out in final product
+					//vote_indicator_35 = 1;					// Indicating button 1 was pressed
+					//no_of_votes_cat8--;
+					////i2c_send_byte(PIC_DEV_ADDR, 35);
+					//deactivate_category_buttons_and_save(button35_addr, 35);  // provide starting and ending buttons as arguments
+				//}
+				else if ((35 > no_of_buttons_in_categories) && (gen_vote_count != 0))
+				{
+					//USART_putstring("35G ");		// comment this out in final product
+					vote_indicator_35 = 1;			// Indicating button 1 was pressed
+					deactivate_category_buttons_and_save(button35_addr, 35);
+					//i2c_send_byte(PIC_DEV_ADDR, 35);
+					gen_vote_count--;
+				}
+			}
+		
+			if ((matrix_A_data == 0) && (matrix_B_data == 0) && (matrix_C_data == 1) && (matrix_D_data == 0) && ((PINC & 0x0F) == 0x03)  && (36 <= candidate_count) && vote_indicator_36 == 0)
+			{
+				if((36 > category_size_2) && (36 <= category_size_3) && (no_of_votes_cat3 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("36C3 ");				// comment this out in final product
+					vote_indicator_36 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat3--;
+					//i2c_send_byte(PIC_DEV_ADDR, 36);
+					deactivate_category_buttons_and_save(button36_addr, 36);  // provide starting and ending buttons as arguments
+				}
+				else if((36 > category_size_3) && (36 <= category_size_4) && (no_of_votes_cat4 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("36C4 ");				// comment this out in final product
+					vote_indicator_36 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat4--;
+					//i2c_send_byte(PIC_DEV_ADDR, 36);
+					deactivate_category_buttons_and_save(button36_addr, 36);  // provide starting and ending buttons as arguments
+				}
+				else if((36 > category_size_4) && (36 <= category_size_5) && (no_of_votes_cat5 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("36C5 ");				// comment this out in final product
+					vote_indicator_36 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat5--;
+					//i2c_send_byte(PIC_DEV_ADDR, 36);
+					deactivate_category_buttons_and_save(button36_addr, 36);  // provide starting and ending buttons as arguments
+				}
+				else if((36 > category_size_5) && (36 <= category_size_6) && (no_of_votes_cat6 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("36C6 ");				// comment this out in final product
+					vote_indicator_36 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat6--;
+					//i2c_send_byte(PIC_DEV_ADDR, 36);
+					deactivate_category_buttons_and_save(button36_addr, 36);  // provide starting and ending buttons as arguments
+				}
+				else if((36 > category_size_6) && (36 <= category_size_7) && (no_of_votes_cat7 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("36C7 ");				// comment this out in final product
+					vote_indicator_36 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat7--;
+					//i2c_send_byte(PIC_DEV_ADDR, 36);
+					deactivate_category_buttons_and_save(button36_addr, 36);  // provide starting and ending buttons as arguments
+				}
+				//else if((36 > category_size_7) && (36 <= category_size_8) && (no_of_votes_cat8 != 0x00))				// Mask out the MSB nibble.
+				//{
+					////USART_putstring("36C8 ");				// comment this out in final product
+					//vote_indicator_36 = 1;					// Indicating button 1 was pressed
+					//no_of_votes_cat8--;
+					////i2c_send_byte(PIC_DEV_ADDR, 36);
+					//deactivate_category_buttons_and_save(button36_addr, 36);  // provide starting and ending buttons as arguments
+				//}
+				else if ((36 > no_of_buttons_in_categories) && (gen_vote_count != 0))
+				{
+					//USART_putstring("36G ");		// comment this out in final product
+					vote_indicator_36 = 1;			// Indicating button 1 was pressed
+					deactivate_category_buttons_and_save(button36_addr, 36);
+					//i2c_send_byte(PIC_DEV_ADDR, 36);
+					gen_vote_count--;
+				}
+			}
+		
+			if ((matrix_A_data == 0) && (matrix_B_data == 0) && (matrix_C_data == 1) && (matrix_D_data == 0) && ((PINC & 0x0F) == 0x04)  && (37 <= candidate_count) && vote_indicator_37 == 0)
+			{
+				if((37 > category_size_2) && (37 <= category_size_3) && (no_of_votes_cat3 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("37C3 ");				// comment this out in final product
+					vote_indicator_37 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat3--;
+					//i2c_send_byte(PIC_DEV_ADDR, 37);
+					deactivate_category_buttons_and_save(button37_addr, 37);  // provide starting and ending buttons as arguments
+				}
+				else if((37 > category_size_3) && (37 <= category_size_4) && (no_of_votes_cat4 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("37C4 ");				// comment this out in final product
+					vote_indicator_37 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat4--;
+					//i2c_send_byte(PIC_DEV_ADDR, 37);
+					deactivate_category_buttons_and_save(button37_addr, 37);  // provide starting and ending buttons as arguments
+				}
+				else if((37 > category_size_4) && (37 <= category_size_5) && (no_of_votes_cat5 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("37C5 ");				// comment this out in final product
+					vote_indicator_37 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat5--;
+					//i2c_send_byte(PIC_DEV_ADDR, 37);
+					deactivate_category_buttons_and_save(button37_addr, 37);  // provide starting and ending buttons as arguments
+				}
+				else if((37 > category_size_5) && (37 <= category_size_6) && (no_of_votes_cat6 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("37C6 ");				// comment this out in final product
+					vote_indicator_37 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat6--;
+					//i2c_send_byte(PIC_DEV_ADDR, 37);
+					deactivate_category_buttons_and_save(button37_addr, 37);  // provide starting and ending buttons as arguments
+				}
+				else if((37 > category_size_6) && (37 <= category_size_7) && (no_of_votes_cat7 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("37C7 ");				// comment this out in final product
+					vote_indicator_37 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat7--;
+					//i2c_send_byte(PIC_DEV_ADDR, 37);
+					deactivate_category_buttons_and_save(button37_addr, 37);  // provide starting and ending buttons as arguments
+				}
+				//else if((37 > category_size_7) && (37 <= category_size_8) && (no_of_votes_cat8 != 0x00))				// Mask out the MSB nibble.
+				//{
+					////USART_putstring("37C8 ");				// comment this out in final product
+					//vote_indicator_37 = 1;					// Indicating button 1 was pressed
+					//no_of_votes_cat8--;
+					////i2c_send_byte(PIC_DEV_ADDR, 37);
+					//deactivate_category_buttons_and_save(button37_addr, 37);  // provide starting and ending buttons as arguments
+				//}
+				else if ((37 > no_of_buttons_in_categories) && (gen_vote_count != 0))
+				{
+					//USART_putstring("37G ");		// comment this out in final product
+					vote_indicator_37 = 1;			// Indicating button 1 was pressed
+					deactivate_category_buttons_and_save(button37_addr, 37);
+					//i2c_send_byte(PIC_DEV_ADDR, 37);
+					gen_vote_count--;
+				}
 			
-			else if((9 > category_size_1) && (9 <= category_size_2) && (no_of_votes_cat2 != 0))// check if this button in 2nd category combination of 1st and 2nd  category buttons.
-			{
-				//USART_putstring("9C2 ");
-				vote_indicator_9 = 1;	// Indicating button 9 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 0x09);
-				deactivate_category_buttons_and_save(button9_addr, 9);
-				no_of_votes_cat2--;
 			}
-			else if((9 > category_size_2) && (9 <= category_size_3) && (no_of_votes_cat3 != 0))
-			{
-				//USART_putstring("9C3 ");
-				vote_indicator_9 = 1;	// Indicating button 9 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 0x09);
-				deactivate_category_buttons_and_save(button9_addr, 9);
-				no_of_votes_cat3--;
-			}
-			else if((9 > category_size_3) && (9 <= category_size_4) && (no_of_votes_cat4 != 0))
-			{
-				//USART_putstring("9C4 ");
-				vote_indicator_9 = 1;	// Indicating button 9 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 0x09);
-				deactivate_category_buttons_and_save(button9_addr, 9);
-				no_of_votes_cat4--;
-			}
-			else if((9 > category_size_4) && (9 <= category_size_5) && (no_of_votes_cat5 != 0))
-			{
-				//USART_putstring("9C5 ");
-				vote_indicator_9 = 1;	// Indicating button 9 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 9);
-				deactivate_category_buttons_and_save(button9_addr, 9);
-				no_of_votes_cat5--;
-			}
-			else if ((9 > no_of_buttons_in_categories) && (gen_vote_count != 0))
-			{
-				//USART_putstring("9G ");		// comment this out in final product
-				vote_indicator_9 = 1;			// Indicating button 1 was pressed
-				deactivate_category_buttons_and_save(button9_addr, 9);
-				//i2c_send_byte(PIC_DEV_ADDR, 0x09);
-				gen_vote_count--;
-			}
-		}
 		
-		if ((matrix_A_data == 1) && (matrix_B_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 0) && ((PINB & 0x0F) == 0x09) && (10 <= candidate_count) && vote_indicator_10==0)// && (gen_vote_count != 0))
-		{
-			if((10 <= category_size_1) && (no_of_votes_cat1 != 0))
+			if ((matrix_A_data == 0) && (matrix_B_data == 0) && (matrix_C_data == 1) && (matrix_D_data == 0) && ((PINC & 0x0F) == 0x05)  && (38 <= candidate_count) && vote_indicator_38 == 0)
 			{
-				//USART_putstring("10C1 ");
-				vote_indicator_10 = 1;	// Indicating button 9 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 10);
-				deactivate_category_buttons_and_save(button10_addr, 10);
-				no_of_votes_cat1--;
+				if((38 > category_size_2) && (38 <= category_size_3) && (no_of_votes_cat3 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("38C3 ");				// comment this out in final product
+					vote_indicator_38 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat3--;
+					//i2c_send_byte(PIC_DEV_ADDR, 38);
+					deactivate_category_buttons_and_save(button38_addr, 38);  // provide starting and ending buttons as arguments
+				}
+				else if((38 > category_size_3) && (38 <= category_size_4) && (no_of_votes_cat4 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("38C4 ");				// comment this out in final product
+					vote_indicator_38 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat4--;
+					//i2c_send_byte(PIC_DEV_ADDR, 38);
+					deactivate_category_buttons_and_save(button38_addr, 38);  // provide starting and ending buttons as arguments
+				}
+				else if((38 > category_size_4) && (38 <= category_size_5) && (no_of_votes_cat5 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("38C5 ");				// comment this out in final product
+					vote_indicator_38 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat5--;
+					//i2c_send_byte(PIC_DEV_ADDR, 38);
+					deactivate_category_buttons_and_save(button38_addr, 38);  // provide starting and ending buttons as arguments
+				}
+				else if((38 > category_size_5) && (38 <= category_size_6) && (no_of_votes_cat6 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("38C6 ");				// comment this out in final product
+					vote_indicator_38 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat6--;
+					//i2c_send_byte(PIC_DEV_ADDR, 38);
+					deactivate_category_buttons_and_save(button38_addr, 38);  // provide starting and ending buttons as arguments
+				}
+				else if((38 > category_size_6) && (38 <= category_size_7) && (no_of_votes_cat7 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("38C7 ");				// comment this out in final product
+					vote_indicator_38 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat7--;
+					//i2c_send_byte(PIC_DEV_ADDR, 38);
+					deactivate_category_buttons_and_save(button38_addr, 38);  // provide starting and ending buttons as arguments
+				}
+				//else if((38 > category_size_7) && (38 <= category_size_8) && (no_of_votes_cat8 != 0x00))				// Mask out the MSB nibble.
+				//{
+					////USART_putstring("38C8 ");				// comment this out in final product
+					//vote_indicator_38 = 1;					// Indicating button 1 was pressed
+					//no_of_votes_cat8--;
+					////i2c_send_byte(PIC_DEV_ADDR, 38);
+					//deactivate_category_buttons_and_save(button38_addr, 38);  // provide starting and ending buttons as arguments
+				//}
+				else if ((38 > no_of_buttons_in_categories) && (gen_vote_count != 0))
+				{
+					//USART_putstring("38G ");		// comment this out in final product
+					vote_indicator_38 = 1;			// Indicating button 1 was pressed
+					deactivate_category_buttons_and_save(button38_addr, 38);
+					//i2c_send_byte(PIC_DEV_ADDR, 38);
+					gen_vote_count--;
+				}
 			}
-			else if((10 > category_size_1) && (10 <= category_size_2) && (no_of_votes_cat2 != 0))// check if this button in 2nd category combination of 1st and 2nd  category buttons.
-			{
-				//USART_putstring("10C2 ");
-				vote_indicator_10 = 1;	// Indicating button 10 was presses.
-				deactivate_category_buttons_and_save(button10_addr, 10);
-				//i2c_send_byte(PIC_DEV_ADDR, 10);
-				no_of_votes_cat2--;
-			}
-			else if((10 > category_size_2) && (10 <= category_size_3) && (no_of_votes_cat3 != 0))
-			{
-				//USART_putstring("10C3 ");
-				vote_indicator_10 = 1;	// Indicating button 10 was presses.
-				deactivate_category_buttons_and_save(button10_addr, 10);
-				//i2c_send_byte(PIC_DEV_ADDR, 10);
-				no_of_votes_cat3--;
-			}
-			else if((10 > category_size_3) && (10 <= category_size_4) && (no_of_votes_cat4 != 0))
-			{
-				//USART_putstring("10C4 ");
-				vote_indicator_10 = 1;	// Indicating button 10 was presses.
-				deactivate_category_buttons_and_save(button10_addr, 10);
-				//i2c_send_byte(PIC_DEV_ADDR, 10);
-				no_of_votes_cat4--;
-			}
-			else if((10 > category_size_4) && (10 <= category_size_5) && (no_of_votes_cat5 != 0))
-			{
-				//USART_putstring("10 C 5");
-				vote_indicator_10 = 1;	// Indicating button 10 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 10);
-				deactivate_category_buttons_and_save(button10_addr, 10);
-				no_of_votes_cat5--;
-			}
-			else if ((10 > no_of_buttons_in_categories) && (gen_vote_count != 0))
-			{
-				//USART_putstring("10G ");		// comment this out in final product
-				vote_indicator_10 = 1;			// Indicating button 1 was pressed
-				deactivate_category_buttons_and_save(button10_addr, 10);
-				//i2c_send_byte(PIC_DEV_ADDR, 10);
-				gen_vote_count--;
-			}
-		}
 		
-		if ((matrix_A_data == 1) && (matrix_B_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 0) && ((PINB & 0x0F) == 0x0A) && (11 <= candidate_count) && vote_indicator_11==0)// && (gen_vote_count != 0))
-		{
-			if((11 <= category_size_1) && (no_of_votes_cat1 != 0))
+			if ((matrix_A_data == 0) && (matrix_B_data == 0) && (matrix_C_data == 1) && (matrix_D_data == 0) && ((PINC & 0x0F) == 0x06)  && (39 <= candidate_count) && vote_indicator_39 == 0)
 			{
-				//USART_putstring("11C1 ");
-				vote_indicator_11 = 1;	// Indicating button 9 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 11);
-				deactivate_category_buttons_and_save(button11_addr, 11);
-				no_of_votes_cat1--;
+				if((39 > category_size_2) && (39 <= category_size_3) && (no_of_votes_cat3 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("39C3 ");				// comment this out in final product
+					vote_indicator_39 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat3--;
+					//i2c_send_byte(PIC_DEV_ADDR, 39);
+					deactivate_category_buttons_and_save(button39_addr, 39);  // provide starting and ending buttons as arguments
+				}
+				else if((39 > category_size_3) && (39 <= category_size_4) && (no_of_votes_cat4 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("39C4 ");				// comment this out in final product
+					vote_indicator_39 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat4--;
+					//i2c_send_byte(PIC_DEV_ADDR, 39);
+					deactivate_category_buttons_and_save(button39_addr, 39);  // provide starting and ending buttons as arguments
+				}
+				else if((39 > category_size_4) && (39 <= category_size_5) && (no_of_votes_cat5 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("39C5 ");				// comment this out in final product
+					vote_indicator_39 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat5--;
+					//i2c_send_byte(PIC_DEV_ADDR, 39);
+					deactivate_category_buttons_and_save(button39_addr, 39);  // provide starting and ending buttons as arguments
+				}
+				else if((39 > category_size_5) && (39 <= category_size_6) && (no_of_votes_cat6 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("39C6 ");				// comment this out in final product
+					vote_indicator_39 = 1;                  	// Indicating button 1 was pressed
+					no_of_votes_cat6--;
+					//i2c_send_byte(PIC_DEV_ADDR, 39);
+					deactivate_category_buttons_and_save(button39_addr, 39);  // provide starting and ending buttons as arguments
+				}
+				else if((39 > category_size_6) && (39 <= category_size_7) && (no_of_votes_cat7 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("39C7 ");				// comment this out in final product
+					vote_indicator_39 = 1;                  	// Indicating button 1 was pressed
+					no_of_votes_cat7--;
+					//i2c_send_byte(PIC_DEV_ADDR, 39);
+					deactivate_category_buttons_and_save(button39_addr, 39);  // provide starting and ending buttons as arguments
+				}
+				//else if((39 > category_size_7) && (39 <= category_size_8) && (no_of_votes_cat8 != 0x00))				// Mask out the MSB nibble.
+				//{
+					////USART_putstring("39C8 ");				// comment this out in final product
+					//vote_indicator_39 = 1;                  	// Indicating button 1 was pressed
+					//no_of_votes_cat8--;
+					////i2c_send_byte(PIC_DEV_ADDR, 39);
+					//deactivate_category_buttons_and_save(button39_addr, 39);  // provide starting and ending buttons as arguments
+				//}
+				else if ((39 > no_of_buttons_in_categories) && (gen_vote_count != 0))
+				{
+					//USART_putstring("39G ");		// comment this out in final product
+					vote_indicator_39 = 1;			// Indicating button 1 was pressed
+					deactivate_category_buttons_and_save(button39_addr, 39);
+					//i2c_send_byte(PIC_DEV_ADDR, 39);
+					gen_vote_count--;
+				}
 			}
-			else if((11 > category_size_1) && (11 <= category_size_2) && (no_of_votes_cat2 != 0))// check if this button in 2nd category combination of 1st and 2nd  category buttons.
-			{
-				//USART_putstring("11C2 ");
-				vote_indicator_11 = 1;	// Indicating button 10 was presses.
-				deactivate_category_buttons_and_save(button11_addr, 11);
-				//i2c_send_byte(PIC_DEV_ADDR, 11);
-				no_of_votes_cat2--;
-			}
-			else if((11 > category_size_2) && (11 <= category_size_3) && (no_of_votes_cat3 != 0))
-			{
-				//USART_putstring("11C3 ");
-				vote_indicator_11 = 1;	// Indicating button 10 was presses.
-				deactivate_category_buttons_and_save(button11_addr, 11);
-				//i2c_send_byte(PIC_DEV_ADDR, 11);
-				no_of_votes_cat3--;
-			}
-			else if((11 > category_size_3) && (11 <= category_size_4) && (no_of_votes_cat4 != 0))
-			{
-				//USART_putstring("11C4 ");
-				vote_indicator_11 = 1;	// Indicating button 10 was presses.
-				deactivate_category_buttons_and_save(button11_addr, 11);
-				//i2c_send_byte(PIC_DEV_ADDR, 11);
-				no_of_votes_cat4--;
-			}
-			else if((11 > category_size_4) && (11 <= category_size_5) && (no_of_votes_cat5 != 0))
-			{
-				//USART_putstring("11C5 ");
-				vote_indicator_11 = 1;	// Indicating button 10 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 11);
-				deactivate_category_buttons_and_save(button11_addr, 11);
-				no_of_votes_cat5--;
-			}
-			else if((11 > category_size_5) && (11 <= category_size_6) && (no_of_votes_cat6 != 0))
-			{
-				//USART_putstring("11C6 ");
-				vote_indicator_11 = 1;	// Indicating button 11 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 11);
-				deactivate_category_buttons_and_save(button11_addr, 11);
-				no_of_votes_cat6--;
-			}
-			else if ((11 > no_of_buttons_in_categories) && (gen_vote_count != 0))
-			{
-				//USART_putstring("11G ");		// comment this out in final product
-				vote_indicator_11 = 1;			// Indicating button 1 was pressed
-				deactivate_category_buttons_and_save(button11_addr, 11);
-				//i2c_send_byte(PIC_DEV_ADDR, 11);
-				gen_vote_count--;
-			}
-		}
 		
-		if ((matrix_A_data == 1) && (matrix_B_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 0) && ((PINB & 0x0F) == 0x0B) && (12 <= candidate_count) && vote_indicator_12==0)// && (gen_vote_count != 10))
-		{
-			if((12 <= category_size_1) && (no_of_votes_cat1 != 0))
+			if ((matrix_A_data == 0) && (matrix_B_data == 0) && (matrix_C_data == 1) && (matrix_D_data == 0) && ((PINC & 0x0F) == 0x07)  && (40 <= candidate_count) && vote_indicator_40 == 0)
 			{
-				//USART_putstring("12C1 ");
-				vote_indicator_12 = 1;	// Indicating button 9 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 12);
-				deactivate_category_buttons_and_save(button12_addr, 12);
-				no_of_votes_cat1--;
+				if((40 > category_size_2) && (40 <= category_size_3) && (no_of_votes_cat3 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("40C3 ");				// comment this out in final product
+					vote_indicator_40 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat3--;
+					//i2c_send_byte(PIC_DEV_ADDR, 40);
+					deactivate_category_buttons_and_save(button40_addr, 40);  // provide starting and ending buttons as arguments
+				}
+				else if((40 > category_size_3) && (40 <= category_size_4) && (no_of_votes_cat4 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("40C4 ");				// comment this out in final product
+					vote_indicator_40 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat4--;
+					//i2c_send_byte(PIC_DEV_ADDR, 40);
+					deactivate_category_buttons_and_save(button40_addr, 40);  // provide starting and ending buttons as arguments
+				}
+				else if((40 > category_size_4) && (40 <= category_size_5) && (no_of_votes_cat5 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("40C5 ");				// comment this out in final product
+					vote_indicator_40 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat5--;
+					//i2c_send_byte(PIC_DEV_ADDR, 40);
+					deactivate_category_buttons_and_save(button40_addr, 40);  // provide starting and ending buttons as arguments
+				}
+				else if((40 > category_size_5) && (40 <= category_size_6) && (no_of_votes_cat6 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("40C6 ");				// comment this out in final product
+					vote_indicator_40 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat6--;
+					//i2c_send_byte(PIC_DEV_ADDR, 40);
+					deactivate_category_buttons_and_save(button40_addr, 40);  // provide starting and ending buttons as arguments
+				}
+				else if((40 > category_size_6) && (40 <= category_size_7) && (no_of_votes_cat7 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("40C7 ");				// comment this out in final product
+					vote_indicator_40 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat7--;
+					//i2c_send_byte(PIC_DEV_ADDR, 40);
+					deactivate_category_buttons_and_save(button40_addr, 40);  // provide starting and ending buttons as arguments
+				}
+				//else if((40 > category_size_7) && (40 <= category_size_8) && (no_of_votes_cat8 != 0x00))				// Mask out the MSB nibble.
+				//{
+					////USART_putstring("40C8 ");				// comment this out in final product
+					//vote_indicator_40 = 1;					// Indicating button 1 was pressed
+					//no_of_votes_cat8--;
+					////i2c_send_byte(PIC_DEV_ADDR, 40);
+					//deactivate_category_buttons_and_save(button40_addr, 40);  // provide starting and ending buttons as arguments
+				//}
+				else if ((40 > no_of_buttons_in_categories) && (gen_vote_count != 0))
+				{
+					//USART_putstring("40G ");		// comment this out in final product
+					vote_indicator_40 = 1;			// Indicating button 1 was pressed
+					deactivate_category_buttons_and_save(button40_addr, 40);
+					//i2c_send_byte(PIC_DEV_ADDR, 40);
+					gen_vote_count--;
+				}
 			}
-			else if((12 > category_size_1) && (12 <= category_size_2) && (no_of_votes_cat2 != 0))// check if this button in 2nd category combination of 1st and 2nd  category buttons.
-			{
-				//USART_putstring("12C2 ");
-				vote_indicator_12 = 1;	// Indicating button 12 was presses.
-				deactivate_category_buttons_and_save(button12_addr, 12);
-				//i2c_send_byte(PIC_DEV_ADDR, 12);
-				no_of_votes_cat2--;
-			}
-			else if((12 > category_size_2) && (12 <= category_size_3) && (no_of_votes_cat3 != 0))
-			{
-				//USART_putstring("12C3 ");
-				vote_indicator_12 = 1;	// Indicating button 12 was presses.
-				deactivate_category_buttons_and_save(button12_addr, 12);
-				//i2c_send_byte(PIC_DEV_ADDR, 12);
-				no_of_votes_cat3--;
-			}
-			else if((12 > category_size_3) && (12 <= category_size_4) && (no_of_votes_cat4 != 0))
-			{
-				//USART_putstring("12C4 ");
-				vote_indicator_12 = 1;	// Indicating button 12 was presses.
-				deactivate_category_buttons_and_save(button12_addr, 12);
-				//i2c_send_byte(PIC_DEV_ADDR, 12);
-				no_of_votes_cat4--;
-			}
-			else if((12 > category_size_4) && (12 <= category_size_5) && (no_of_votes_cat5 != 0))
-			{
-				//USART_putstring("12C5 ");
-				vote_indicator_12 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 12);
-				deactivate_category_buttons_and_save(button12_addr, 12);
-				no_of_votes_cat5--;
-			}
-			else if((12 > category_size_5) && (12 <= category_size_6) && (no_of_votes_cat6 != 0))
-			{
-				//USART_putstring("12C6 ");
-				vote_indicator_12 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 12);
-				deactivate_category_buttons_and_save(button12_addr, 12);
-				no_of_votes_cat6--;
-			}
-			else if ((12 > no_of_buttons_in_categories) && (gen_vote_count != 0))
-			{
-				//USART_putstring("12G ");		// comment this out in final product
-				vote_indicator_12 = 1;			// Indicating button 1 was pressed
-				deactivate_category_buttons_and_save(button12_addr, 12);
-				//i2c_send_byte(PIC_DEV_ADDR, 12);
-				gen_vote_count--;
-			}
-		}
 		
-		if ((matrix_A_data == 1) && (matrix_B_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 0) && ((PINB & 0x0F) == 0x0C) && (13 <= candidate_count) && (vote_indicator_13 == 0))// && (gen_vote_count != 10))
-		{
-			if((13 <= category_size_1) && (no_of_votes_cat1 != 0))
+			if ((matrix_A_data == 0) && (matrix_B_data == 0) && (matrix_C_data == 1) && (matrix_D_data == 0) && ((PINC & 0x0F) == 0x08)  && (41 <= candidate_count) && vote_indicator_41 == 0)
 			{
-				//USART_putstring("13C1 ");
-				vote_indicator_13 = 1;	// Indicating button 9 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 13);
-				deactivate_category_buttons_and_save(button13_addr, 13);
-				no_of_votes_cat1--;
+				if((41 > category_size_2) && (41 <= category_size_3) && (no_of_votes_cat3 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("41C3 ");				// comment this out in final product
+					vote_indicator_41 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat3--;
+					//i2c_send_byte(PIC_DEV_ADDR, 41);
+					deactivate_category_buttons_and_save(button41_addr, 41);  // provide starting and ending buttons as arguments
+				}
+				else if((41 > category_size_3) && (41 <= category_size_4) && (no_of_votes_cat4 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("41C4 ");				// comment this out in final product
+					vote_indicator_41 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat4--;
+					//i2c_send_byte(PIC_DEV_ADDR, 41);
+					deactivate_category_buttons_and_save(button41_addr, 41);  // provide starting and ending buttons as arguments
+				}
+				else if((41 > category_size_4) && (41 <= category_size_5) && (no_of_votes_cat5 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("41C5 ");				// comment this out in final product
+					vote_indicator_41 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat5--;
+					//i2c_send_byte(PIC_DEV_ADDR, 41);
+					deactivate_category_buttons_and_save(button41_addr, 41);  // provide starting and ending buttons as arguments
+				}
+				else if((41 > category_size_5) && (41 <= category_size_6) && (no_of_votes_cat6 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("41C6 ");				// comment this out in final product
+					vote_indicator_41 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat6--;
+					//i2c_send_byte(PIC_DEV_ADDR, 41);
+					deactivate_category_buttons_and_save(button41_addr, 41);  // provide starting and ending buttons as arguments
+				}
+				else if((41 > category_size_6) && (41 <= category_size_7) && (no_of_votes_cat7 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("41C7 ");				// comment this out in final product
+					vote_indicator_41 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat7--;
+					//i2c_send_byte(PIC_DEV_ADDR, 41);
+					deactivate_category_buttons_and_save(button41_addr, 41);  // provide starting and ending buttons as arguments
+				}
+				//else if((41 > category_size_7) && (41 <= category_size_8) && (no_of_votes_cat8 != 0x00))				// Mask out the MSB nibble.
+				//{
+					////USART_putstring("41C8 ");				// comment this out in final product
+					//vote_indicator_41 = 1;					// Indicating button 1 was pressed
+					//no_of_votes_cat8--;
+					////i2c_send_byte(PIC_DEV_ADDR, 41);
+					//deactivate_category_buttons_and_save(button41_addr, 41);  // provide starting and ending buttons as arguments
+				//}
+				else if ((41 > no_of_buttons_in_categories) && (gen_vote_count != 0))
+				{
+					//USART_putstring("41G ");		// comment this out in final product
+					vote_indicator_41 = 1;			// Indicating button 1 was pressed
+					deactivate_category_buttons_and_save(button41_addr, 41);
+					//i2c_send_byte(PIC_DEV_ADDR, 41);
+					gen_vote_count--;
+				}
 			}
-			else if((13 > category_size_1) && (13 <= category_size_2) && (no_of_votes_cat2 != 0))// check if this button in 2nd category combination of 1st and 2nd  category buttons.
-			{
-				//USART_putstring("13C2 ");
-				vote_indicator_13 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 13);
-				deactivate_category_buttons_and_save(button13_addr, 13);
-				no_of_votes_cat2--;
-			}
-			else if((13 > category_size_2) && (13 <= category_size_3) && (no_of_votes_cat3 != 0))
-			{
-				//USART_putstring("13C3 ");
-				vote_indicator_13 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 13);
-				deactivate_category_buttons_and_save(button13_addr, 13);
-				no_of_votes_cat3--;	
-			}
-			else if((13 > category_size_3) && (13 <= category_size_4) && (no_of_votes_cat4 != 0))
-			{
-				//USART_putstring("13C4 ");
-				vote_indicator_13 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 13);
-				deactivate_category_buttons_and_save(button13_addr, 13);
-				no_of_votes_cat4--;
-			}
-			else if((13 > category_size_4) && (13 <= category_size_5) && (no_of_votes_cat5 != 0))
-			{
-				//USART_putstring("13C5 ");
-				vote_indicator_13 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 13);
-				deactivate_category_buttons_and_save(button13_addr, 13);
-				no_of_votes_cat5--;
-			}
-			else if((13 > category_size_5) && (13 <= category_size_6) && (no_of_votes_cat6 != 0))
-			{
-				//USART_putstring("13C6 ");
-				vote_indicator_13 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 13);
-				deactivate_category_buttons_and_save(button13_addr, 13);
-				no_of_votes_cat6--;
-			}
-			else if((13 > category_size_6) && (13 <= category_size_7) && (no_of_votes_cat7 != 0))
-			{
-				//USART_putstring("13C7 ");
-				vote_indicator_13 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 13);
-				deactivate_category_buttons_and_save(button13_addr, 13);
-				no_of_votes_cat7--;
-			}
-			//else if((13 > category_size_7) && (13 <= category_size_8) && (no_of_votes_cat8 != 0))
-			//{
-				////USART_putstring("13C8 ");
-				//vote_indicator_13 = 1;	// Indicating button 12 was presses.
-				////i2c_send_byte(PIC_DEV_ADDR, 13);
-				//deactivate_category_buttons_and_save(button13_addr, 13);
-				//no_of_votes_cat8--;
-			//}
-			else if ((13 > no_of_buttons_in_categories) && (gen_vote_count != 0))
-			{
-				//USART_putstring("13G ");		// comment this out in final product
-				vote_indicator_13 = 1;			// Indicating button 1 was pressed
-				deactivate_category_buttons_and_save(button13_addr, 13);
-				//i2c_send_byte(PIC_DEV_ADDR, 13);
-				gen_vote_count--;
-			}
-		}
 		
-		if ((matrix_A_data == 1) && (matrix_B_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 0) && ((PINB & 0x0F) == 0x0D) && (14 <= candidate_count) && vote_indicator_14==0)
-		{
-			if((14 <= category_size_1) && (no_of_votes_cat1 != 0))
+			if ((matrix_A_data == 0) && (matrix_B_data == 0) && (matrix_C_data == 1) && (matrix_D_data == 0) && ((PINC & 0x0F) == 0x09)  && (42 <= candidate_count) && vote_indicator_42 == 0)
 			{
-				//USART_putstring("14C1 ");
-				vote_indicator_14 = 1;	// Indicating button 9 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 14);
-				deactivate_category_buttons_and_save(button14_addr, 14);
-				no_of_votes_cat1--;
+				if((42 > category_size_2) && (42 <= category_size_3) && (no_of_votes_cat3 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("42C3 ");				// comment this out in final product
+					vote_indicator_42 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat3--;
+					//i2c_send_byte(PIC_DEV_ADDR, 42);
+					deactivate_category_buttons_and_save(button42_addr, 42);  // provide starting and ending buttons as arguments
+				}
+				else if((42 > category_size_3) && (42 <= category_size_4) && (no_of_votes_cat4 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("42C4 ");				// comment this out in final product
+					vote_indicator_42 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat4--;
+					//i2c_send_byte(PIC_DEV_ADDR, 42);
+					deactivate_category_buttons_and_save(button42_addr, 42);  // provide starting and ending buttons as arguments
+				}
+				else if((42 > category_size_4) && (42 <= category_size_5) && (no_of_votes_cat5 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("42C5 ");				// comment this out in final product
+					vote_indicator_42 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat5--;
+					//i2c_send_byte(PIC_DEV_ADDR, 42);
+					deactivate_category_buttons_and_save(button42_addr, 42);  // provide starting and ending buttons as arguments
+				}
+				else if((42 > category_size_5) && (42 <= category_size_6) && (no_of_votes_cat6 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("42C6 ");				// comment this out in final product
+					vote_indicator_42 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat6--;
+					//i2c_send_byte(PIC_DEV_ADDR, 42);
+					deactivate_category_buttons_and_save(button42_addr, 42);  // provide starting and ending buttons as arguments
+				}
+				else if((42 > category_size_6) && (42 <= category_size_7) && (no_of_votes_cat7 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("42C7 ");				// comment this out in final product
+					vote_indicator_42 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat7--;
+					//i2c_send_byte(PIC_DEV_ADDR, 42);
+					deactivate_category_buttons_and_save(button42_addr, 42);  // provide starting and ending buttons as arguments
+				}
+				//else if((42 > category_size_7) && (42 <= category_size_8) && (no_of_votes_cat8 != 0x00))				// Mask out the MSB nibble.
+				//{
+					////USART_putstring("42C8 ");				// comment this out in final product
+					//vote_indicator_42 = 1;					// Indicating button 1 was pressed
+					//no_of_votes_cat8--;
+					////i2c_send_byte(PIC_DEV_ADDR, 42);
+					//deactivate_category_buttons_and_save(button42_addr, 42);  // provide starting and ending buttons as arguments
+				//}
+				else if ((42 > no_of_buttons_in_categories) && (gen_vote_count != 0))
+				{
+					//USART_putstring("42G ");		// comment this out in final product
+					vote_indicator_42 = 1;			// Indicating button 1 was pressed
+					deactivate_category_buttons_and_save(button42_addr, 42);
+					//i2c_send_byte(PIC_DEV_ADDR, 42);
+					gen_vote_count--;
+				}
 			}
-			else if((14 > category_size_1) && (14 <= category_size_2) && (no_of_votes_cat2 != 0))
-			{
-				//USART_putstring("14C2 ");
-				vote_indicator_14 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 14);
-				deactivate_category_buttons_and_save(button14_addr, 14);
-				no_of_votes_cat2--;
-			}
-			else if((14 > category_size_2) && (14 <= category_size_3) && (no_of_votes_cat3 != 0))
-			{
-				//USART_putstring("14C3 ");
-				vote_indicator_14 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 14);
-				deactivate_category_buttons_and_save(button14_addr, 14);
-				no_of_votes_cat3--;
-			}
-			else if((14 > category_size_3) && (14 <= category_size_4) && (no_of_votes_cat4 != 0))
-			{
-				//USART_putstring("14C4 ");
-				vote_indicator_14 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 14);
-				deactivate_category_buttons_and_save(button14_addr, 14);
-				no_of_votes_cat4--;
-			}
-			else if((14 > category_size_4) && (14 <= category_size_5) && (no_of_votes_cat5 != 0))
-			{
-				//USART_putstring("14C5 ");
-				vote_indicator_14 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 14);
-				deactivate_category_buttons_and_save(button14_addr, 14);
-				no_of_votes_cat5--;
-			}
-			else if((14 > category_size_5) && (14 <= category_size_6) && (no_of_votes_cat6 != 0))
-			{
-				//USART_putstring("14C6 ");
-				vote_indicator_14 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 14);
-				deactivate_category_buttons_and_save(button14_addr, 14);
-				no_of_votes_cat6--;
-			}
-			else if((14 > category_size_6) && (14 <= category_size_7) && (no_of_votes_cat7 != 0))
-			{
-				//USART_putstring("14C7 ");
-				vote_indicator_14 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 14);
-				deactivate_category_buttons_and_save(button14_addr, 14);
-				no_of_votes_cat7--;
-			}
-			//else if((14 > category_size_7) && (14 <= category_size_8) && (no_of_votes_cat8 != 0))
-			//{
-				////USART_putstring("14C8 ");
-				//vote_indicator_14 = 1;	// Indicating button 12 was presses.
-				////i2c_send_byte(PIC_DEV_ADDR, 14);
-				//deactivate_category_buttons_and_save(button14_addr, 14);
-				//no_of_votes_cat8--;
-			//}
-			else if ((14 > no_of_buttons_in_categories) && (gen_vote_count != 0))
-			{
-				//USART_putstring("14G ");		// comment this out in final product
-				vote_indicator_14 = 1;			// Indicating button 1 was pressed
-				deactivate_category_buttons_and_save(button14_addr, 14);
-				//i2c_send_byte(PIC_DEV_ADDR, 14);
-				gen_vote_count--;
-			}
-		}
 		
-		if ((matrix_A_data == 1) && (matrix_B_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 0) && ((PINB & 0x0F) == 0x0E) && (15 <= candidate_count) && (vote_indicator_15==0))
-		{
-			if((15 <= category_size_1) && (no_of_votes_cat1 != 0))
+			if ((matrix_A_data == 0) && (matrix_B_data == 0) && (matrix_C_data == 1) && (matrix_D_data == 0) && ((PINC & 0x0F) == 0x0A)  && (43 <= candidate_count) && vote_indicator_43 == 0)
 			{
-				//USART_putstring("15C1 ");
-				vote_indicator_15 = 1;	// Indicating button 9 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 15);
-				deactivate_category_buttons_and_save(button15_addr, 15);
-				no_of_votes_cat1--;
+				if((43 > category_size_2) && (43 <= category_size_3) && (no_of_votes_cat3 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("43C3 ");				// comment this out in final product
+					vote_indicator_43 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat3--;
+					//i2c_send_byte(PIC_DEV_ADDR, 43);
+					deactivate_category_buttons_and_save(button43_addr, 43);  // provide starting and ending buttons as arguments
+				}
+				else if((43 > category_size_3) && (43 <= category_size_4) && (no_of_votes_cat4 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("43C4 ");				// comment this out in final product
+					vote_indicator_43 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat4--;
+					//i2c_send_byte(PIC_DEV_ADDR, 43);
+					deactivate_category_buttons_and_save(button43_addr, 43);  // provide starting and ending buttons as arguments
+				}
+				else if((43 > category_size_4) && (43 <= category_size_5) && (no_of_votes_cat5 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("43C5 ");				// comment this out in final product
+					vote_indicator_43 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat5--;
+					//i2c_send_byte(PIC_DEV_ADDR, 43);
+					deactivate_category_buttons_and_save(button43_addr, 43);  // provide starting and ending buttons as arguments
+				}
+				else if((43 > category_size_5) && (43 <= category_size_6) && (no_of_votes_cat6 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("43C6 ");				// comment this out in final product
+					vote_indicator_43 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat6--;
+					//i2c_send_byte(PIC_DEV_ADDR, 43);
+					deactivate_category_buttons_and_save(button43_addr, 43);  // provide starting and ending buttons as arguments
+				}
+				else if((43 > category_size_6) && (43 <= category_size_7) && (no_of_votes_cat7 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("43C7 ");				// comment this out in final product
+					vote_indicator_43 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat7--;
+					//i2c_send_byte(PIC_DEV_ADDR, 43);
+					deactivate_category_buttons_and_save(button43_addr, 43);  // provide starting and ending buttons as arguments
+				}
+				//else if((43 > category_size_7) && (43 <= category_size_8) && (no_of_votes_cat8 != 0x00))				// Mask out the MSB nibble.
+				//{
+					////USART_putstring("43C8 ");				// comment this out in final product
+					//vote_indicator_43 = 1;					// Indicating button 1 was pressed
+					//no_of_votes_cat8--;
+					////i2c_send_byte(PIC_DEV_ADDR, 43);
+					//deactivate_category_buttons_and_save(button43_addr, 43);  // provide starting and ending buttons as arguments
+				//}
+				else if ((43 > no_of_buttons_in_categories) && (gen_vote_count != 0))
+				{
+					//USART_putstring("43G ");		// comment this out in final product
+					vote_indicator_43 = 1;			// Indicating button 1 was pressed
+					deactivate_category_buttons_and_save(button43_addr, 43);
+					//i2c_send_byte(PIC_DEV_ADDR, 43);
+					gen_vote_count--;
+				}
 			}
-			else if((15 > category_size_1) && (15 <= category_size_2) && (no_of_votes_cat2 != 0))
-			{
-				//USART_putstring("15C2 ");
-				vote_indicator_15 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 15);
-				deactivate_category_buttons_and_save(button15_addr, 15);
-				no_of_votes_cat2--;
-			}
-			else if((15 > category_size_2) && (15 <= category_size_3) && (no_of_votes_cat3 != 0))
-			{
-				//USART_putstring("15C3 ");
-				vote_indicator_15 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 15);
-				deactivate_category_buttons_and_save(button15_addr, 15);
-				no_of_votes_cat3--;
-			}
-			else if((15 > category_size_3) && (15 <= category_size_4) && (no_of_votes_cat4 != 0))
-			{
-				//USART_putstring("15C4 ");
-				vote_indicator_15 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 15);
-				deactivate_category_buttons_and_save(button15_addr, 15);
-				no_of_votes_cat4--;
-			}
-			else if((15 > category_size_4) && (15 <= category_size_5) && (no_of_votes_cat5 != 0))
-			{
-				//USART_putstring("15C5 ");
-				vote_indicator_15 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 15);
-				deactivate_category_buttons_and_save(button15_addr, 15);
-				no_of_votes_cat5--;
-			}
-			else if((15 > category_size_5) && (15 <= category_size_6) && (no_of_votes_cat6 != 0))
-			{
-				//USART_putstring("15C6 ");
-				vote_indicator_15 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 15);
-				deactivate_category_buttons_and_save(button15_addr, 15);
-				no_of_votes_cat6--;
-			}
-			else if((15 > category_size_6) && (15 <= category_size_7) && (no_of_votes_cat7 != 0))
-			{
-				//USART_putstring("15C7 ");
-				vote_indicator_15 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 15);
-				deactivate_category_buttons_and_save(button15_addr, 15);
-				no_of_votes_cat7--;
-			}
-			//else if((15 > category_size_7) && (15 <= category_size_8) && (no_of_votes_cat8 != 0))
-			//{
-				////USART_putstring("15C8 ");
-				//vote_indicator_15 = 1;	// Indicating button 12 was presses.
-				////i2c_send_byte(PIC_DEV_ADDR, 15);
-				//deactivate_category_buttons_and_save(button15_addr, 15);
-				//no_of_votes_cat8--;
-			//}
-			else if ((15 > no_of_buttons_in_categories) && (gen_vote_count != 0))
-			{
-				//USART_putstring("15G ");		// comment this out in final product
-				vote_indicator_15 = 1;			// Indicating button 1 was pressed
-				deactivate_category_buttons_and_save(button15_addr, 15);
-				//i2c_send_byte(PIC_DEV_ADDR, 15);
-				gen_vote_count--;
-			}
-		}
 		
-		if ((matrix_A_data == 1) && (matrix_B_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 0) && ((PINB & 0x0F) == 0x0F) && (16 <= candidate_count) && vote_indicator_16==0)
-		{
-			if((16 > category_size_1) && (16 <= category_size_2) && (no_of_votes_cat2 != 0))
+			if ((matrix_A_data == 0) && (matrix_B_data == 0) && (matrix_C_data == 1) && (matrix_D_data == 0) && ((PINC & 0x0F) == 0x0B)  && (44 <= candidate_count) && vote_indicator_44 == 0)
 			{
-				//USART_putstring("16C2 ");
-				vote_indicator_16 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 16);
-				deactivate_category_buttons_and_save(button16_addr, 16);
-				no_of_votes_cat2--;
+				if((44 > category_size_2) && (44 <= category_size_3) && (no_of_votes_cat3 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("44C3 ");				// comment this out in final product
+					vote_indicator_44 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat3--;
+					//i2c_send_byte(PIC_DEV_ADDR, 44);
+					deactivate_category_buttons_and_save(button44_addr, 44);  // provide starting and ending buttons as arguments
+				}
+				else if((44 > category_size_3) && (44 <= category_size_4) && (no_of_votes_cat4 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("44C4 ");				// comment this out in final product
+					vote_indicator_44 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat4--;
+					//i2c_send_byte(PIC_DEV_ADDR, 44);
+					deactivate_category_buttons_and_save(button44_addr, 44);  // provide starting and ending buttons as arguments
+				}
+				else if((44 > category_size_4) && (44 <= category_size_5) && (no_of_votes_cat5 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("44C5 ");				// comment this out in final product
+					vote_indicator_44 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat5--;
+					//i2c_send_byte(PIC_DEV_ADDR, 44);
+					deactivate_category_buttons_and_save(button44_addr, 44);  // provide starting and ending buttons as arguments
+				}
+				else if((44 > category_size_5) && (44 <= category_size_6) && (no_of_votes_cat6 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("44C6 ");				// comment this out in final product
+					vote_indicator_44 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat6--;
+					//i2c_send_byte(PIC_DEV_ADDR, 44);
+					deactivate_category_buttons_and_save(button44_addr, 44);  // provide starting and ending buttons as arguments
+				}
+				else if((44 > category_size_6) && (44 <= category_size_7) && (no_of_votes_cat7 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("44C7 ");				// comment this out in final product
+					vote_indicator_44 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat7--;
+					//i2c_send_byte(PIC_DEV_ADDR, 44);
+					deactivate_category_buttons_and_save(button44_addr, 44);  // provide starting and ending buttons as arguments
+				}
+				//else if((44 > category_size_7) && (44 <= category_size_8) && (no_of_votes_cat8 != 0x00))				// Mask out the MSB nibble.
+				//{
+					////USART_putstring("44C8 ");				// comment this out in final product
+					//vote_indicator_44 = 1;					// Indicating button 1 was pressed
+					//no_of_votes_cat8--;
+					////i2c_send_byte(PIC_DEV_ADDR, 44);
+					//deactivate_category_buttons_and_save(button44_addr, 44);  // provide starting and ending buttons as arguments
+				//}
+				else if ((44 > no_of_buttons_in_categories) && (gen_vote_count != 0))
+				{
+					//USART_putstring("44G ");		// comment this out in final product
+					vote_indicator_44 = 1;			// Indicating button 1 was pressed
+					deactivate_category_buttons_and_save(button44_addr, 44);
+					//i2c_send_byte(PIC_DEV_ADDR, 44);
+					gen_vote_count--;
+				}
 			}
-			else if((16 > category_size_2) && (16 <= category_size_3) && (no_of_votes_cat3 != 0))
-			{
-				//USART_putstring("16C3 ");
-				vote_indicator_16 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 16);
-				deactivate_category_buttons_and_save(button16_addr, 16);
-				no_of_votes_cat3--;
-			}
-			else if((16 > category_size_3) && (16 <= category_size_4) && (no_of_votes_cat4 != 0))
-			{
-				//USART_putstring("16C4 ");
-				vote_indicator_16 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 16);
-				deactivate_category_buttons_and_save(button16_addr, 16);
-				no_of_votes_cat4--;
-			}
-			else if((16 > category_size_4) && (16 <= category_size_5) && (no_of_votes_cat5 != 0))
-			{
-				//USART_putstring("16C5 ");
-				vote_indicator_16 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 16);
-				deactivate_category_buttons_and_save(button16_addr, 16);
-				no_of_votes_cat5--;
-			}
-			else if((16 > category_size_5) && (16 <= category_size_6) && (no_of_votes_cat6 != 0))
-			{
-				//USART_putstring("16C6 ");
-				vote_indicator_16 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 16);
-				deactivate_category_buttons_and_save(button16_addr, 16);
-				no_of_votes_cat6--;
-			}
-			else if((16 > category_size_6) && (16 <= category_size_7) && (no_of_votes_cat7 != 0))
-			{
-				//USART_putstring("16C7 ");
-				vote_indicator_16 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 16);
-				deactivate_category_buttons_and_save(button16_addr, 16);
-				no_of_votes_cat7--;
-			}
-			//else if((16 > category_size_7) && (16 <= category_size_8) && (no_of_votes_cat8 != 0))
-			//{
-				////USART_putstring("16C8 ");
-				//vote_indicator_16 = 1;	// Indicating button 12 was presses.
-				////i2c_send_byte(PIC_DEV_ADDR, 16);
-				//deactivate_category_buttons_and_save(button16_addr, 16);
-				//no_of_votes_cat8--;
-			//}
-			else if ((16 > no_of_buttons_in_categories) && (gen_vote_count != 0))
-			{
-				//USART_putstring("16G ");		// comment this out in final product
-				vote_indicator_16 = 1;			// Indicating button 1 was pressed
-				deactivate_category_buttons_and_save(button16_addr, 16);
-				//i2c_send_byte(PIC_DEV_ADDR, 16);
-				gen_vote_count--;
-			}
-		}
 		
-		if ((matrix_B_data == 1) && (matrix_A_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 0) && ((PINB & 0x0F) == 0x00) && (17 <= candidate_count) && vote_indicator_17==0)
-		{
-			if((17 > category_size_1) && (17 <= category_size_2) && (no_of_votes_cat2 != 0))
+			if ((matrix_A_data == 0) && (matrix_B_data == 0) && (matrix_C_data == 1) && (matrix_D_data == 0) && ((PINC & 0x0F) == 0x0C)  && (45 <= candidate_count) && vote_indicator_45 == 0)
 			{
-				//USART_putstring("17C2 ");
-				vote_indicator_17 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 17);
-				deactivate_category_buttons_and_save(button17_addr, 17);
-				no_of_votes_cat2--;
+				if((45 > category_size_2) && (45 <= category_size_3) && (no_of_votes_cat3 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("45C3 ");				// comment this out in final product
+					vote_indicator_45 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat3--;
+					//i2c_send_byte(PIC_DEV_ADDR, 45);
+					deactivate_category_buttons_and_save(button45_addr, 45);  // provide starting and ending buttons as arguments
+				}
+				else if((45 > category_size_3) && (45 <= category_size_4) && (no_of_votes_cat4 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("45C4 ");				// comment this out in final product
+					vote_indicator_45 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat4--;
+					//i2c_send_byte(PIC_DEV_ADDR, 45);
+					deactivate_category_buttons_and_save(button45_addr, 45);  // provide starting and ending buttons as arguments
+				}
+				else if((45 > category_size_4) && (45 <= category_size_5) && (no_of_votes_cat5 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("45C5 ");				// comment this out in final product
+					vote_indicator_45 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat5--;
+					//i2c_send_byte(PIC_DEV_ADDR, 45);
+					deactivate_category_buttons_and_save(button45_addr, 45);  // provide starting and ending buttons as arguments
+				}
+				else if((45 > category_size_5) && (45 <= category_size_6) && (no_of_votes_cat6 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("45C6 ");				// comment this out in final pro6uct
+					vote_indicator_45 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat6--;
+					//i2c_send_byte(PIC_DEV_ADDR, 45);
+					deactivate_category_buttons_and_save(button45_addr, 45);  // provide starting and ending buttons as arguments
+				}
+				else if((45 > category_size_6) && (45 <= category_size_7) && (no_of_votes_cat7 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("45C7 ");				// comment this out in final pro6uct
+					vote_indicator_45 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat7--;
+					//i2c_send_byte(PIC_DEV_ADDR, 45);
+					deactivate_category_buttons_and_save(button45_addr, 45);  // provide starting and ending buttons as arguments
+				}
+				//else if((45 > category_size_7) && (45 <= category_size_8) && (no_of_votes_cat8 != 0x00))				// Mask out the MSB nibble.
+				//{
+					////USART_putstring("45C8 ");				// comment this out in final pro6uct
+					//vote_indicator_45 = 1;					// Indicating button 1 was pressed
+					//no_of_votes_cat8--;
+					////i2c_send_byte(PIC_DEV_ADDR, 45);
+					//deactivate_category_buttons_and_save(button45_addr, 45);  // provide starting and ending buttons as arguments
+				//}
+				else if ((45 > no_of_buttons_in_categories) && (gen_vote_count != 0))
+				{
+					//USART_putstring("45G ");		// comment this out in final product
+					vote_indicator_45 = 1;			// Indicating button 1 was pressed
+					deactivate_category_buttons_and_save(button45_addr, 45);
+					//i2c_send_byte(PIC_DEV_ADDR, 45);
+					gen_vote_count--;
+				}
 			}
-			else if((17 > category_size_2) && (17 <= category_size_3) && (no_of_votes_cat3 != 0))
-			{
-				//USART_putstring("17C3 ");
-				vote_indicator_17 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 17);
-				deactivate_category_buttons_and_save(button17_addr, 17);
-				no_of_votes_cat3--;
-			}
-			else if((17 > category_size_3) && (17 <= category_size_4) && (no_of_votes_cat4 != 0))
-			{
-				//USART_putstring("17C4 ");
-				vote_indicator_17 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 17);
-				deactivate_category_buttons_and_save(button17_addr, 17);
-				no_of_votes_cat4--;
-			}
-			else if((17 > category_size_4) && (17 <= category_size_5) && (no_of_votes_cat5 != 0))
-			{
-				//USART_putstring("17C5 ");
-				vote_indicator_17 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 17);
-				deactivate_category_buttons_and_save(button17_addr, 17);
-				no_of_votes_cat5--;
-			}
-			else if((17 > category_size_5) && (17 <= category_size_6) && (no_of_votes_cat6 != 0))
-			{
-				//USART_putstring("17C6 ");
-				vote_indicator_17 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 17);
-				deactivate_category_buttons_and_save(button17_addr, 17);
-				no_of_votes_cat6--;
-			}
-			else if((17 > category_size_6) && (17 <= category_size_7) && (no_of_votes_cat7 != 0))
-			{
-				//USART_putstring("17C7 ");
-				vote_indicator_17 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 17);
-				deactivate_category_buttons_and_save(button17_addr, 17);
-				no_of_votes_cat7--;
-			}
-			//else if((17 > category_size_7) && (17 <= category_size_8) && (no_of_votes_cat8 != 0))
-			//{
-				////USART_putstring("17C8 ");
-				//vote_indicator_17 = 1;	// Indicating button 12 was presses.
-				////i2c_send_byte(PIC_DEV_ADDR, 17);
-				//deactivate_category_buttons_and_save(button17_addr, 17);
-				//no_of_votes_cat8--;
-			//}
-			else if((17 > no_of_buttons_in_categories) && (gen_vote_count != 0))
-			{
-				//USART_putstring("17G ");		// comment this out in final product
-				vote_indicator_17 = 1;			// Indicating button 1 was pressed
-				deactivate_category_buttons_and_save(button17_addr, 17);
-				//i2c_send_byte(PIC_DEV_ADDR, 17);
-				gen_vote_count--;
-			}
-		}
 		
-		if ((matrix_B_data == 1) && (matrix_A_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 0) && ((PINB & 0x0F) == 0x01) && (18 <= candidate_count) && vote_indicator_18==0)
-		{
-			if((18 > category_size_1) && (18 <= category_size_2) && (no_of_votes_cat2 != 0))
+			if ((matrix_A_data == 0) && (matrix_B_data == 0) && (matrix_C_data == 1) && (matrix_D_data == 0) && ((PINC & 0x0F) == 0x0D) && (46 <= candidate_count) && vote_indicator_46 == 0)
 			{
-				//USART_putstring("18C2 ");
-				vote_indicator_18 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 18);
-				deactivate_category_buttons_and_save(button18_addr, 18);
-				no_of_votes_cat2--;
+				//if((46 > category_size_2) && (46 <= category_size_3) && (no_of_votes_cat3 != 0x00))				// Mask out the MSB nibble.
+				//{
+					////USART_putstring("46 C 3");				// comment this out in final product
+					//vote_indicator_46 = 1;					// Indicating button 1 was pressed
+					//no_of_votes_cat3--;
+					////i2c_send_byte(PIC_DEV_ADDR, 46);
+					//deactivate_category_buttons_and_save(button46_addr, 46);  // provide starting and ending buttons as arguments
+				//}
+				if((46 > category_size_3) && (46 <= category_size_4) && (no_of_votes_cat4 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("46C4 ");				// comment this out in final product
+					vote_indicator_46 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat4--;
+					//i2c_send_byte(PIC_DEV_ADDR, 46);
+					deactivate_category_buttons_and_save(button46_addr, 46);  // provide starting and ending buttons as arguments
+				}
+				else if((46 > category_size_4) && (46 <= category_size_5) && (no_of_votes_cat5 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("46C5 ");				// comment this out in final product
+					vote_indicator_46 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat5--;
+					//i2c_send_byte(PIC_DEV_ADDR, 46);
+					deactivate_category_buttons_and_save(button46_addr, 46);  // provide starting and ending buttons as arguments
+				}
+				else if((46 > category_size_5) && (46 <= category_size_6) && (no_of_votes_cat6 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("46C6 ");				// comment this out in final product
+					vote_indicator_46 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat6--;
+					//i2c_send_byte(PIC_DEV_ADDR, 46);
+					deactivate_category_buttons_and_save(button46_addr, 46);  // provide starting and ending buttons as arguments
+				}
+				else if((46 > category_size_6) && (46 <= category_size_7) && (no_of_votes_cat7 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("46C7 ");				// comment this out in final product
+					vote_indicator_46 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat7--;
+					//i2c_send_byte(PIC_DEV_ADDR, 46);
+					deactivate_category_buttons_and_save(button46_addr, 46);  // provide starting and ending buttons as arguments
+				}
+				//else if((46 > category_size_7) && (46 <= category_size_8) && (no_of_votes_cat8 != 0x00))				// Mask out the MSB nibble.
+				//{
+					////USART_putstring("46C8 ");				// comment this out in final product
+					//vote_indicator_46 = 1;					// Indicating button 1 was pressed
+					//no_of_votes_cat8--;
+					////i2c_send_byte(PIC_DEV_ADDR, 46);
+					//deactivate_category_buttons_and_save(button46_addr, 46);  // provide starting and ending buttons as arguments
+				//}
+				else if ((46 > no_of_buttons_in_categories) && (gen_vote_count != 0))
+				{
+					//USART_putstring("46G ");		// comment this out in final product
+					vote_indicator_46 = 1;			// Indicating button 1 was pressed
+					deactivate_category_buttons_and_save(button46_addr, 46);
+					//i2c_send_byte(PIC_DEV_ADDR, 46);
+					gen_vote_count--;
+				}
 			}
-			else if((18 > category_size_2) && (18 <= category_size_3) && (no_of_votes_cat3 != 0))
-			{
-				//USART_putstring("18C3 ");
-				vote_indicator_18 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 18);
-				deactivate_category_buttons_and_save(button18_addr, 18);
-				no_of_votes_cat3--;
-			}
-			else if((18 > category_size_3) && (18 <= category_size_4) && (no_of_votes_cat4 != 0))
-			{
-				//USART_putstring("18C4 ");
-				vote_indicator_18 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 18);
-				deactivate_category_buttons_and_save(button18_addr, 18);
-				no_of_votes_cat4--;
-			}
-			else if((18 > category_size_4) && (18 <= category_size_5) && (no_of_votes_cat5 != 0))
-			{
-				//USART_putstring("18C5 ");
-				vote_indicator_18 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 18);
-				deactivate_category_buttons_and_save(button18_addr, 18);
-				no_of_votes_cat5--;
-			}
-			else if((18 > category_size_5) && (18 <= category_size_6) && (no_of_votes_cat6 != 0))
-			{
-				//USART_putstring("18C6 ");
-				vote_indicator_18 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 18);
-				deactivate_category_buttons_and_save(button18_addr, 18);
-				no_of_votes_cat6--;
-			}
-			else if((18 > category_size_6) && (18 <= category_size_7) && (no_of_votes_cat7 != 0))
-			{
-				//USART_putstring("18C7 ");
-				vote_indicator_18 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 18);
-				deactivate_category_buttons_and_save(button18_addr, 18);
-				no_of_votes_cat7--;
-			}
-			//else if((18 > category_size_7) && (18 <= category_size_8) && (no_of_votes_cat8 != 0))
-			//{
-				////USART_putstring("18C8 ");
-				//vote_indicator_18 = 1;	// Indicating button 12 was presses.
-				////i2c_send_byte(PIC_DEV_ADDR, 18);
-				//deactivate_category_buttons_and_save(button18_addr, 18);
-				//no_of_votes_cat8--;
-			//}
-			else if((18 > no_of_buttons_in_categories) && (gen_vote_count != 0))
-			{
-				//USART_putstring("18G ");		// comment this out in final product
-				vote_indicator_18 = 1;			// Indicating button 1 was pressed
-				deactivate_category_buttons_and_save(button18_addr, 18);
-				//i2c_send_byte(PIC_DEV_ADDR, 18);
-				gen_vote_count--;
-			}
-		}
 		
-		if ((matrix_B_data == 1) && (matrix_A_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 0) && ((PINB & 0x0F) == 0x02) && (19 <= candidate_count) && vote_indicator_19==0)
-		{
-			if((19 > category_size_1) && (19 <= category_size_2) && (no_of_votes_cat2 != 0))
+			if ((matrix_A_data == 0) && (matrix_B_data == 0) && (matrix_C_data == 1) && (matrix_D_data == 0) && ((PINC & 0x0F) == 0x0E) && (47 <= candidate_count) && vote_indicator_47 == 0)
 			{
-				//USART_putstring("19C2 ");
-				vote_indicator_19 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 19);
-				deactivate_category_buttons_and_save(button19_addr, 19);
-				no_of_votes_cat2--;
+				//if((47 > category_size_2) && (47 <= category_size_3) && (no_of_votes_cat3 != 0x00))				// Mask out the MSB nibble.
+				//{
+					////USART_putstring("47 C 3");				// comment this out in final product
+					//vote_indicator_47 = 1;					// Indicating button 1 was pressed
+					//no_of_votes_cat3--;
+					////i2c_send_byte(PIC_DEV_ADDR, 47);
+					//deactivate_category_buttons_and_save(button47_addr, 47);  // provide starting and ending buttons as arguments
+				//}
+				if((47 > category_size_3) && (47 <= category_size_4) && (no_of_votes_cat4 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("47C4 ");				// comment this out in final product
+					vote_indicator_47 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat4--;
+					//i2c_send_byte(PIC_DEV_ADDR, 47);
+					deactivate_category_buttons_and_save(button47_addr, 47);  // provide starting and ending buttons as arguments
+				}
+				else if((47 > category_size_4) && (47 <= category_size_5) && (no_of_votes_cat5 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("47C5 ");				// comment this out in final product
+					vote_indicator_47 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat5--;
+					//i2c_send_byte(PIC_DEV_ADDR, 47);
+					deactivate_category_buttons_and_save(button47_addr, 47);  // provide starting and ending buttons as arguments
+				}
+				else if((47 > category_size_5) && (47 <= category_size_6) && (no_of_votes_cat6 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("47C6 ");				// comment this out in final product
+					vote_indicator_47 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat6--;
+					//i2c_send_byte(PIC_DEV_ADDR, 47);
+					deactivate_category_buttons_and_save(button47_addr, 47);  // provide starting and ending buttons as arguments
+				}
+				else if((47 > category_size_6) && (47 <= category_size_7) && (no_of_votes_cat7 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("47C7 ");				// comment this out in final product
+					vote_indicator_47 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat7--;
+					//i2c_send_byte(PIC_DEV_ADDR, 47);
+					deactivate_category_buttons_and_save(button47_addr, 47);  // provide starting and ending buttons as arguments
+				}
+				//else if((47 > category_size_7) && (47 <= category_size_8) && (no_of_votes_cat8 != 0x00))				// Mask out the MSB nibble.
+				//{
+					////USART_putstring("47C8 ");				// comment this out in final product
+					//vote_indicator_47 = 1;					// Indicating button 1 was pressed
+					//no_of_votes_cat8--;
+					////i2c_send_byte(PIC_DEV_ADDR, 47);
+					//deactivate_category_buttons_and_save(button47_addr, 47);  // provide starting and ending buttons as arguments
+				//}
+				else if ((47 > no_of_buttons_in_categories) && (gen_vote_count != 0))
+				{
+					//USART_putstring("47G ");		// comment this out in final product
+					vote_indicator_47 = 1;			// Indicating button 1 was pressed
+					deactivate_category_buttons_and_save(button47_addr, 47);
+					//i2c_send_byte(PIC_DEV_ADDR, 47);
+					gen_vote_count--;
+				}
 			}
-			else if((19 > category_size_2) && (19 <= category_size_3) && (no_of_votes_cat3 != 0))
-			{
-				//USART_putstring("19C3 ");
-				vote_indicator_19 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 19);
-				deactivate_category_buttons_and_save(button19_addr, 19);
-				no_of_votes_cat3--;
-			}
-			else if((19 > category_size_3) && (19 <= category_size_4) && (no_of_votes_cat4 != 0))
-			{
-				//USART_putstring("19C4 ");
-				vote_indicator_19 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 19);
-				deactivate_category_buttons_and_save(button19_addr, 19);
-				no_of_votes_cat4--;
-			}
-			else if((19 > category_size_4) && (19 <= category_size_5) && (no_of_votes_cat5 != 0))
-			{
-				//USART_putstring("19C5 ");
-				vote_indicator_19 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 19);
-				deactivate_category_buttons_and_save(button19_addr, 19);
-				no_of_votes_cat5--;
-			}
-			else if((19 > category_size_5) && (19 <= category_size_6) && (no_of_votes_cat6 != 0))
-			{
-				//USART_putstring("19C6 ");
-				vote_indicator_19 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 19);
-				deactivate_category_buttons_and_save(button19_addr, 19);
-				no_of_votes_cat6--;
-			}
-			else if((19 > category_size_6) && (19 <= category_size_7) && (no_of_votes_cat7 != 0))
-			{
-				//USART_putstring("19C7 ");
-				vote_indicator_19 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 19);
-				deactivate_category_buttons_and_save(button19_addr, 19);
-				no_of_votes_cat7--;
-			}
-			//else if((19 > category_size_7) && (19 <= category_size_8) && (no_of_votes_cat8 != 0))
-			//{
-				////USART_putstring("19C8 ");
-				//vote_indicator_19 = 1;	// Indicating button 12 was presses.
-				////i2c_send_byte(PIC_DEV_ADDR, 19);
-				//deactivate_category_buttons_and_save(button19_addr, 19);
-				//no_of_votes_cat8--;
-			//}
-			else if((19 > no_of_buttons_in_categories) && (gen_vote_count != 0))
-			{
-				//USART_putstring("19G ");		// comment this out in final product
-				vote_indicator_19 = 1;			// Indicating button 1 was pressed
-				deactivate_category_buttons_and_save(button19_addr, 19);
-				//i2c_send_byte(PIC_DEV_ADDR, 19);
-				gen_vote_count--;
-			}
-		}
 		
-		if ((matrix_B_data == 1) && (matrix_A_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 0) && ((PINB & 0x0F) == 0x03) && (20 <= candidate_count) && vote_indicator_20==0)
-		{
-			if((20 > category_size_1) && (20 <= category_size_2) && (no_of_votes_cat2 != 0))
+			if ((matrix_A_data == 0) && (matrix_B_data == 0) && (matrix_C_data == 1) && (matrix_D_data == 0) && ((PINC & 0x0F) == 0x0F) && (48 <= candidate_count) && vote_indicator_48 == 0)
 			{
-				//USART_putstring("20C2 ");
-				vote_indicator_20 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 20);
-				deactivate_category_buttons_and_save(button20_addr, 20);
-				no_of_votes_cat2--;
+				//if((48 > category_size_2) && (48 <= category_size_3) && (no_of_votes_cat3 != 0x00))				// Mask out the MSB nibble.
+				//{
+					////USART_putstring("48 C 3");				// comment this out in final product
+					//vote_indicator_48 = 1;					// Indicating button 1 was pressed
+					//no_of_votes_cat3--;
+					////i2c_send_byte(PIC_DEV_ADDR, 48);
+					//deactivate_category_buttons_and_save(button48_addr, 48);  // provide starting and ending buttons as arguments
+				//}
+				if((48 > category_size_3) && (48 <= category_size_4) && (no_of_votes_cat4 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("48C4 ");				// comment this out in final product
+					vote_indicator_48 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat4--;
+					//i2c_send_byte(PIC_DEV_ADDR, 48);
+					deactivate_category_buttons_and_save(button48_addr, 48);  // provide starting and ending buttons as arguments
+				}
+				else if((48 > category_size_4) && (48 <= category_size_5) && (no_of_votes_cat5 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("48C5 ");				// comment this out in final product
+					vote_indicator_48 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat5--;
+					//i2c_send_byte(PIC_DEV_ADDR, 48);
+					deactivate_category_buttons_and_save(button48_addr, 48);  // provide starting and ending buttons as arguments
+				}
+				else if((48 > category_size_5) && (48 <= category_size_6) && (no_of_votes_cat6 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("48C6 ");				// comment this out in final product
+					vote_indicator_48 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat6--;
+					//i2c_send_byte(PIC_DEV_ADDR, 48);
+					deactivate_category_buttons_and_save(button48_addr, 48);  // provide starting and ending buttons as arguments
+				}
+				else if((48 > category_size_6) && (48 <= category_size_7) && (no_of_votes_cat7 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("48C7 ");				// comment this out in final product
+					vote_indicator_48 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat7--;
+					//i2c_send_byte(PIC_DEV_ADDR, 48);
+					deactivate_category_buttons_and_save(button48_addr, 48);  // provide starting and ending buttons as arguments
+				}
+				//else if((48 > category_size_7) && (48 <= category_size_8) && (no_of_votes_cat8 != 0x00))				// Mask out the MSB nibble.
+				//{
+					////USART_putstring("48C8 ");				// comment this out in final product
+					//vote_indicator_48 = 1;					// Indicating button 1 was pressed
+					//no_of_votes_cat8--;
+					////i2c_send_byte(PIC_DEV_ADDR, 48);
+					//deactivate_category_buttons_and_save(button48_addr, 48);  // provide starting and ending buttons as arguments
+				//}
+				else if ((48 > no_of_buttons_in_categories) && (gen_vote_count != 0))
+				{
+					//USART_putstring("48G ");		// comment this out in final product
+					vote_indicator_48 = 1;			// Indicating button 1 was pressed
+					deactivate_category_buttons_and_save(button48_addr, 48);
+					//i2c_send_byte(PIC_DEV_ADDR, 48);
+					gen_vote_count--;
+				}
 			}
-			else if((20 > category_size_2) && (20 <= category_size_3) && (no_of_votes_cat3 != 0))
-			{
-				//USART_putstring("20C3 ");
-				vote_indicator_20 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 20);
-				deactivate_category_buttons_and_save(button20_addr, 20);
-				no_of_votes_cat3--;
-			}
-			else if((20 > category_size_3) && (20 <= category_size_4) && (no_of_votes_cat4 != 0))
-			{
-				//USART_putstring("20C4 ");
-				vote_indicator_20 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 20);
-				deactivate_category_buttons_and_save(button20_addr, 20);
-				no_of_votes_cat4--;
-			}
-			else if((20 > category_size_4) && (20 <= category_size_5) && (no_of_votes_cat5 != 0))
-			{
-				//USART_putstring("20C5 ");
-				vote_indicator_20 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 20);
-				deactivate_category_buttons_and_save(button20_addr, 20);
-				no_of_votes_cat5--;
-			}
-			else if((20 > category_size_5) && (20 <= category_size_6) && (no_of_votes_cat6 != 0))
-			{
-				//USART_putstring("20C6 ");
-				vote_indicator_20 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 20);
-				deactivate_category_buttons_and_save(button20_addr, 20);
-				no_of_votes_cat6--;
-			}
-			else if((20 > category_size_6) && (20 <= category_size_7) && (no_of_votes_cat7 != 0))
-			{
-				//USART_putstring("20C7 ");
-				vote_indicator_20 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 20);
-				deactivate_category_buttons_and_save(button20_addr, 20);
-				no_of_votes_cat7--;
-			}
-			//else if((20 > category_size_7) && (20 <= category_size_8) && (no_of_votes_cat8 != 0))
-			//{
-				////USART_putstring("20C8 ");
-				//vote_indicator_20 = 1;	// Indicating button 12 was presses.
-				////i2c_send_byte(PIC_DEV_ADDR, 20);
-				//deactivate_category_buttons_and_save(button20_addr, 20);
-				//no_of_votes_cat8--;
-			//}
-			else if((20 > no_of_buttons_in_categories) && (gen_vote_count != 0))
-			{
-				//USART_putstring("20G ");		// comment this out in final product
-				vote_indicator_20 = 1;			// Indicating button 1 was pressed
-				deactivate_category_buttons_and_save(button20_addr, 20);
-				//i2c_send_byte(PIC_DEV_ADDR, 20);
-				gen_vote_count--;
-			}
-		}
 		
-		if ((matrix_B_data == 1) && (matrix_A_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 0) && ((PINB & 0x0F) == 0x04) && (21 <= candidate_count) && vote_indicator_21==0)
-		{
-			if((21 > category_size_1) && (21 <= category_size_2) && (no_of_votes_cat2 != 0))
+			if ((matrix_A_data == 0) && (matrix_B_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 1) && ((PINC & 0x0F) == 0x00) && (49 <= candidate_count) && vote_indicator_49 == 0)
 			{
-				//USART_putstring("21C2 ");
-				vote_indicator_21 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 21);
-				deactivate_category_buttons_and_save(button21_addr, 21);
-				no_of_votes_cat2--;
+				//if((49 > category_size_2) && (49 <= category_size_3) && (no_of_votes_cat3 != 0x00))				// Mask out the MSB nibble.
+				//{
+					////USART_putstring("49 C 3");				// comment this out in final product
+					//vote_indicator_49 = 1;					// Indicating button 1 was pressed
+					//no_of_votes_cat3--;
+					////i2c_send_byte(PIC_DEV_ADDR, 49);
+					//deactivate_category_buttons_and_save(button49_addr, 49);  // provide starting and ending buttons as arguments
+				//}
+				if((49 > category_size_3) && (49 <= category_size_4) && (no_of_votes_cat4 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("49C4 ");				// comment this out in final product
+					vote_indicator_49 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat4--;
+					//i2c_send_byte(PIC_DEV_ADDR, 49);
+					deactivate_category_buttons_and_save(button49_addr, 49);  // provide starting and ending buttons as arguments
+				}
+				else if((49 > category_size_4) && (49 <= category_size_5) && (no_of_votes_cat5 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("49C5 ");				// comment this out in final product
+					vote_indicator_49 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat5--;
+					//i2c_send_byte(PIC_DEV_ADDR, 49);
+					deactivate_category_buttons_and_save(button49_addr, 49);  // provide starting and ending buttons as arguments
+				}
+				else if((49 > category_size_5) && (49 <= category_size_6) && (no_of_votes_cat6 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("49C6 ");				// comment this out in final product
+					vote_indicator_49 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat6--;
+					//i2c_send_byte(PIC_DEV_ADDR, 49);
+					deactivate_category_buttons_and_save(button49_addr, 49);  // provide starting and ending buttons as arguments
+				}
+				else if((49 > category_size_6) && (49 <= category_size_7) && (no_of_votes_cat7 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("49C7 ");				// comment this out in final product
+					vote_indicator_49 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat7--;
+					//i2c_send_byte(PIC_DEV_ADDR, 49);
+					deactivate_category_buttons_and_save(button49_addr, 49);  // provide starting and ending buttons as arguments
+				}
+				//else if((49 > category_size_7) && (49 <= category_size_8) && (no_of_votes_cat8 != 0x00))				// Mask out the MSB nibble.
+				//{
+					////USART_putstring("49C8 ");				// comment this out in final product
+					//vote_indicator_49 = 1;					// Indicating button 1 was pressed
+					//no_of_votes_cat8--;
+					////i2c_send_byte(PIC_DEV_ADDR, 49);
+					//deactivate_category_buttons_and_save(button49_addr, 49);  // provide starting and ending buttons as arguments
+				//}
+				else if ((49 > no_of_buttons_in_categories) && (gen_vote_count != 0))
+				{
+					////USART_putstring("49 G ");		// comment this out in final product
+					vote_indicator_49 = 1;			// Indicating button 1 was pressed
+					deactivate_category_buttons_and_save(button49_addr, 49);
+					//i2c_send_byte(PIC_DEV_ADDR, 49);
+					gen_vote_count--;
+				}
 			}
-			else if((21 > category_size_2) && (21 <= category_size_3) && (no_of_votes_cat3 != 0))
+			if ((matrix_A_data == 0) && (matrix_B_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 1) && ((PINC & 0x0F) == 0x01) && (50 <= candidate_count) && vote_indicator_50 == 0)
 			{
-				//USART_putstring("21C3 ");
-				vote_indicator_21 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 21);
-				deactivate_category_buttons_and_save(button21_addr, 21);
-				no_of_votes_cat3--;
+				//if((50 > category_size_2) && (50 <= category_size_3) && (no_of_votes_cat3 != 0x00))				// Mask out the MSB nibble.
+				//{
+					////USART_putstring("50 C 3");				// comment this out in final product
+					//vote_indicator_50 = 1;					// Indicating button 1 was pressed
+					//no_of_votes_cat3--;
+					////i2c_send_byte(PIC_DEV_ADDR, 50);
+					//deactivate_category_buttons_and_save(button50_addr, 50);  // provide starting and ending buttons as arguments
+				//}
+				if((50 > category_size_3) && (50 <= category_size_4) && (no_of_votes_cat4 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("50C4 ");				// comment this out in final product
+					vote_indicator_50 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat4--;
+					//i2c_send_byte(PIC_DEV_ADDR, 50);
+					deactivate_category_buttons_and_save(button50_addr, 50);  // provide starting and ending buttons as arguments
+				}
+				else if((50 > category_size_4) && (50 <= category_size_5) && (no_of_votes_cat5 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("50C5 ");				// comment this out in final product
+					vote_indicator_50 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat5--;
+					//i2c_send_byte(PIC_DEV_ADDR, 50);
+					deactivate_category_buttons_and_save(button50_addr, 50);  // provide starting and ending buttons as arguments
+				}
+				else if((50 > category_size_5) && (50 <= category_size_6) && (no_of_votes_cat6 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("50C6 ");				// comment this out in final product
+					vote_indicator_50 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat6--;
+					//i2c_send_byte(PIC_DEV_ADDR, 50);
+					deactivate_category_buttons_and_save(button50_addr, 50);  // provide starting and ending buttons as arguments
+				}
+				else if((50 > category_size_6) && (50 <= category_size_7) && (no_of_votes_cat7 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("50C7 ");				// comment this out in final product
+					vote_indicator_50 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat7--;
+					//i2c_send_byte(PIC_DEV_ADDR, 50);
+					deactivate_category_buttons_and_save(button50_addr, 50);  // provide starting and ending buttons as arguments
+				}
+				//else if((50 > category_size_7) && (50 <= category_size_8) && (no_of_votes_cat8 != 0x00))				// Mask out the MSB nibble.
+				//{
+					////USART_putstring("50C8 ");				// comment this out in final product
+					//vote_indicator_50 = 1;					// Indicating button 1 was pressed
+					//no_of_votes_cat8--;
+					////i2c_send_byte(PIC_DEV_ADDR, 50);
+					//deactivate_category_buttons_and_save(button50_addr, 50);  // provide starting and ending buttons as arguments
+				//}
+				else if ((50 > no_of_buttons_in_categories) && (gen_vote_count != 0))
+				{
+					//USART_putstring("50G ");		// comment this out in final product
+					vote_indicator_50 = 1;			// Indicating button 1 was pressed
+					deactivate_category_buttons_and_save(button50_addr, 50);
+					//i2c_send_byte(PIC_DEV_ADDR, 50);
+					gen_vote_count--;
+				}
 			}
-			else if((21 > category_size_3) && (21 <= category_size_4) && (no_of_votes_cat4 != 0))
-			{
-				//USART_putstring("21C4 ");
-				vote_indicator_21 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 21);
-				deactivate_category_buttons_and_save(button21_addr, 21);
-				no_of_votes_cat4--;
-			}
-			else if((21 > category_size_4) && (21 <= category_size_5) && (no_of_votes_cat5 != 0))
-			{
-				//USART_putstring("21C5 ");
-				vote_indicator_21 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 21);
-				deactivate_category_buttons_and_save(button21_addr, 21);
-				no_of_votes_cat5--;
-			}
-			else if((21 > category_size_5) && (21 <= category_size_6) && (no_of_votes_cat6 != 0))
-			{
-				//USART_putstring("21C6 ");
-				vote_indicator_21 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 21);
-				deactivate_category_buttons_and_save(button21_addr, 21);
-				no_of_votes_cat6--;
-			}
-			else if((21 > category_size_6) && (21 <= category_size_7) && (no_of_votes_cat7 != 0))
-			{
-				//USART_putstring("21C7 ");
-				vote_indicator_21 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 21);
-				deactivate_category_buttons_and_save(button21_addr, 21);
-				no_of_votes_cat7--;
-			}
-			//else if((21 > category_size_7) && (21 <= category_size_8) && (no_of_votes_cat8 != 0))
-			//{
-				////USART_putstring("21C8 ");
-				//vote_indicator_21 = 1;	// Indicating button 12 was presses.
-				////i2c_send_byte(PIC_DEV_ADDR, 21);
-				//deactivate_category_buttons_and_save(button21_addr, 21);
-				//no_of_votes_cat8--;
-			//}
-			else if((21 > no_of_buttons_in_categories) && (gen_vote_count != 0))
-			{
-				//USART_putstring("21G ");		// comment this out in final product
-				vote_indicator_21 = 1;			// Indicating button 1 was pressed
-				deactivate_category_buttons_and_save(button21_addr, 21);
-				//i2c_send_byte(PIC_DEV_ADDR, 21);
-				gen_vote_count--;
-			}
-		}
 		
-		if ((matrix_B_data == 1) && (matrix_A_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 0) && ((PINB & 0x0F) == 0x05) && (22 <= candidate_count) && vote_indicator_22==0)
-		{
-			if((22 > category_size_1) && (22 <= category_size_2) && (no_of_votes_cat2 != 0))
+			if ((matrix_A_data == 0) && (matrix_B_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 1) && ((PINC & 0x0F) == 0x02) && (51 <= candidate_count) && vote_indicator_51 == 0)
 			{
-				//USART_putstring("22C2 ");
-				vote_indicator_22 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 22);
-				deactivate_category_buttons_and_save(button22_addr, 22);
-				no_of_votes_cat2--;
+				//if((51 > category_size_2) && (51 <= category_size_3) && (no_of_votes_cat3 != 0x00))				// Mask out the MSB nibble.
+				//{
+					////USART_putstring("51 C 3");				// comment this out in final product
+					//vote_indicator_51 = 1;					// Indicating button 1 was pressed
+					//no_of_votes_cat3--;
+					////i2c_send_byte(PIC_DEV_ADDR, 51);
+					//deactivate_category_buttons_and_save(button51_addr, 51);  // provide starting and ending buttons as arguments
+				//}
+				if((51 > category_size_3) && (51 <= category_size_4) && (no_of_votes_cat4 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("51C4 ");				// comment this out in final product
+					vote_indicator_51 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat4--;
+					//i2c_send_byte(PIC_DEV_ADDR, 51);
+					deactivate_category_buttons_and_save(button51_addr, 51);  // provide starting and ending buttons as arguments
+				}
+				else if((51 > category_size_4) && (51 <= category_size_5) && (no_of_votes_cat5 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("51C5 ");				// comment this out in final product
+					vote_indicator_51 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat5--;
+					//i2c_send_byte(PIC_DEV_ADDR, 51);
+					deactivate_category_buttons_and_save(button51_addr, 51);  // provide starting and ending buttons as arguments
+				}
+				else if((51 > category_size_5) && (51 <= category_size_6) && (no_of_votes_cat6 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("51C6 ");				// comment this out in final product
+					vote_indicator_51 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat6--;
+					//i2c_send_byte(PIC_DEV_ADDR, 51);
+					deactivate_category_buttons_and_save(button51_addr, 51);  // provide starting and ending buttons as arguments
+				}
+				else if((51 > category_size_6) && (51 <= category_size_7) && (no_of_votes_cat7 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("51C7 ");				// comment this out in final product
+					vote_indicator_51 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat7--;
+					//i2c_send_byte(PIC_DEV_ADDR, 51);
+					deactivate_category_buttons_and_save(button51_addr, 51);  // provide starting and ending buttons as arguments
+				}
+				//else if((51 > category_size_7) && (51 <= category_size_8) && (no_of_votes_cat8 != 0x00))				// Mask out the MSB nibble.
+				//{
+					////USART_putstring("51C8 ");				// comment this out in final product
+					//vote_indicator_51 = 1;					// Indicating button 1 was pressed
+					//no_of_votes_cat8--;
+					////i2c_send_byte(PIC_DEV_ADDR, 51);
+					//deactivate_category_buttons_and_save(button51_addr, 51);  // provide starting and ending buttons as arguments
+				//}
+				else if ((51 > no_of_buttons_in_categories) && (gen_vote_count != 0))
+				{
+					//USART_putstring("51G ");		// comment this out in final product
+					vote_indicator_51 = 1;			// Indicating button 1 was pressed
+					deactivate_category_buttons_and_save(button51_addr, 51);
+					//i2c_send_byte(PIC_DEV_ADDR, 51);
+					gen_vote_count--;
+				}
 			}
-			else if((22 > category_size_2) && (21 <= category_size_3) && (no_of_votes_cat3 != 0))
-			{
-				//USART_putstring("22C3 ");
-				vote_indicator_22 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 22);
-				deactivate_category_buttons_and_save(button22_addr, 22);
-				no_of_votes_cat3--;
-			}
-			else if((22 > category_size_3) && (21 <= category_size_4) && (no_of_votes_cat4 != 0))
-			{
-				//USART_putstring("22C4 ");
-				vote_indicator_22 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 22);
-				deactivate_category_buttons_and_save(button22_addr, 22);
-				no_of_votes_cat4--;
-			}
-			else if((22 > category_size_4) && (21 <= category_size_5) && (no_of_votes_cat5 != 0))
-			{
-				//USART_putstring("22C5 ");
-				vote_indicator_22 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 22);
-				deactivate_category_buttons_and_save(button22_addr, 22);
-				no_of_votes_cat5--;
-			}
-			else if((22 > category_size_5) && (21 <= category_size_6) && (no_of_votes_cat6 != 0))
-			{
-				//USART_putstring("22C6");
-				vote_indicator_22 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 22);
-				deactivate_category_buttons_and_save(button22_addr, 22);
-				no_of_votes_cat6--;
-			}
-			else if((22 > category_size_6) && (21 <= category_size_7) && (no_of_votes_cat7 != 0))
-			{
-				//USART_putstring("22C7");
-				vote_indicator_22 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 22);
-				deactivate_category_buttons_and_save(button22_addr, 22);
-				no_of_votes_cat7--;
-			}
-			//else if((22 > category_size_7) && (21 <= category_size_8) && (no_of_votes_cat8 != 0))
-			//{
-				////USART_putstring("22C8");
-				//vote_indicator_22 = 1;	// Indicating button 12 was presses.
-				////i2c_send_byte(PIC_DEV_ADDR, 22);
-				//deactivate_category_buttons_and_save(button22_addr, 22);
-				//no_of_votes_cat8--;
-			//}
-			else if((22 > no_of_buttons_in_categories) && (gen_vote_count != 0))
-			{
-				//USART_putstring("22G ");		// comment this out in final product
-				vote_indicator_22 = 1;			// Indicating button 1 was pressed
-				deactivate_category_buttons_and_save(button22_addr, 22);
-				//i2c_send_byte(PIC_DEV_ADDR, 22);
-				gen_vote_count--;
-			}
-		}
 		
-		if ((matrix_B_data == 1) && (matrix_A_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 0) && ((PINB & 0x0F) == 0x06) && (23 <= candidate_count) && vote_indicator_23==0)
-		{
-			if((23 > category_size_1) && (23 <= category_size_2) && (no_of_votes_cat2 != 0))
+			if ((matrix_A_data == 0) && (matrix_B_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 1) && ((PINC & 0x0F) == 0x03) && (52 <= candidate_count) && vote_indicator_52 == 0)
 			{
-				//USART_putstring("23C2 ");
-				vote_indicator_23 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 23);
-				deactivate_category_buttons_and_save(button23_addr, 23);
-				no_of_votes_cat2--;
+				//if((52 > category_size_2) && (52 <= category_size_3) && (no_of_votes_cat3 != 0x00))				// Mask out the MSB nibble.
+				//{
+					////USART_putstring("52 C 3");				// comment this out in final product
+					//vote_indicator_52 = 1;					// Indicating button 1 was pressed
+					//no_of_votes_cat3--;
+					////i2c_send_byte(PIC_DEV_ADDR, 52);
+					//deactivate_category_buttons_and_save(button52_addr, 52);  // provide starting and ending buttons as arguments
+				//}
+				if((52 > category_size_3) && (52 <= category_size_4) && (no_of_votes_cat4 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("52C4 ");				// comment this out in final product
+					vote_indicator_52 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat4--;
+					//i2c_send_byte(PIC_DEV_ADDR, 52);
+					deactivate_category_buttons_and_save(button52_addr, 52);  // provide starting and ending buttons as arguments
+				}
+				else if((52 > category_size_4) && (52 <= category_size_5) && (no_of_votes_cat5 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("52C5 ");				// comment this out in final product
+					vote_indicator_52 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat5--;
+					//i2c_send_byte(PIC_DEV_ADDR, 52);
+					deactivate_category_buttons_and_save(button52_addr, 52);  // provide starting and ending buttons as arguments
+				}
+				else if((52 > category_size_5) && (52 <= category_size_6) && (no_of_votes_cat6 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("52C6 ");				// comment this out in final product
+					vote_indicator_52 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat6--;
+					//i2c_send_byte(PIC_DEV_ADDR, 52);
+					deactivate_category_buttons_and_save(button52_addr, 52);  // provide starting and ending buttons as arguments
+				}
+				else if((52 > category_size_6) && (52 <= category_size_7) && (no_of_votes_cat7 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("52C7 ");				// comment this out in final product
+					vote_indicator_52 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat7--;
+					//i2c_send_byte(PIC_DEV_ADDR, 52);
+					deactivate_category_buttons_and_save(button52_addr, 52);  // provide starting and ending buttons as arguments
+				}
+				//else if((52 > category_size_7) && (52 <= category_size_8) && (no_of_votes_cat8 != 0x00))				// Mask out the MSB nibble.
+				//{
+					////USART_putstring("52C8 ");				// comment this out in final product
+					//vote_indicator_52 = 1;					// Indicating button 1 was pressed
+					//no_of_votes_cat8--;
+					////i2c_send_byte(PIC_DEV_ADDR, 52);
+					//deactivate_category_buttons_and_save(button52_addr, 52);  // provide starting and ending buttons as arguments
+				//}
+				else if ((52 > no_of_buttons_in_categories) && (gen_vote_count != 0))
+				{
+					//USART_putstring("52G ");		// comment this out in final product
+					vote_indicator_52 = 1;			// Indicating button 1 was pressed
+					deactivate_category_buttons_and_save(button52_addr, 52);
+					//i2c_send_byte(PIC_DEV_ADDR, 52);
+					gen_vote_count--;
+				}
 			}
-			else if((23 > category_size_2) && (23 <= category_size_3) && (no_of_votes_cat3 != 0))
-			{
-				//USART_putstring("23C3 ");
-				vote_indicator_23 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 23);
-				deactivate_category_buttons_and_save(button23_addr, 23);
-				no_of_votes_cat3--;
-			}
-			else if((23 > category_size_3) && (23 <= category_size_4) && (no_of_votes_cat4 != 0))
-			{
-				//USART_putstring("23C4 ");
-				vote_indicator_23 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 23);
-				deactivate_category_buttons_and_save(button23_addr, 23);
-				no_of_votes_cat4--;
-			}
-			else if((23 > category_size_4) && (23 <= category_size_5) && (no_of_votes_cat5 != 0))
-			{
-				//USART_putstring("23C5 ");
-				vote_indicator_23 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 23);
-				deactivate_category_buttons_and_save(button23_addr, 23);
-				no_of_votes_cat5--;
-			}
-			else if((23 > category_size_5) && (23 <= category_size_6) && (no_of_votes_cat6 != 0))
-			{
-				//USART_putstring("23C6 ");
-				vote_indicator_23 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 23);
-				deactivate_category_buttons_and_save(button23_addr, 23);
-				no_of_votes_cat6--;
-			}
-			else if((23 > category_size_6) && (23 <= category_size_7) && (no_of_votes_cat7 != 0))
-			{
-				//USART_putstring("23C7 ");
-				vote_indicator_23 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 23);
-				deactivate_category_buttons_and_save(button23_addr, 23);
-				no_of_votes_cat7--;
-			}
-			else if((23 > category_size_7) && (23 <= category_size_8) && (no_of_votes_cat8 != 0))
-			{
-				//USART_putstring("23C8 ");
-				vote_indicator_23 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 23);
-				deactivate_category_buttons_and_save(button23_addr, 23);
-				no_of_votes_cat8--;
-			}
-			else if((23 > no_of_buttons_in_categories) && (gen_vote_count != 0))
-			{
-				//USART_putstring("23G ");		// comment this out in final product
-				vote_indicator_23 = 1;			// Indicating button 1 was pressed
-				deactivate_category_buttons_and_save(button23_addr, 23);
-				//i2c_send_byte(PIC_DEV_ADDR, 23);
-				gen_vote_count--;
-			}
-		}
 		
-		if ((matrix_B_data == 1) && (matrix_A_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 0) && ((PINB & 0x0F) == 0x07) && (24 <= candidate_count) && vote_indicator_24==0)
-		{
-			if((24 > category_size_1) && (24 <= category_size_2) && (no_of_votes_cat2 != 0))
+			if ((matrix_A_data == 0) && (matrix_B_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 1) && ((PINC & 0x0F) == 0x04) && (53 <= candidate_count) && vote_indicator_53 == 0)
 			{
-				//USART_putstring("24C2 ");
-				vote_indicator_24 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 24);
-				deactivate_category_buttons_and_save(button24_addr, 24);
-				no_of_votes_cat2--;
+				//if((53 > category_size_2) && (53 <= category_size_3) && (no_of_votes_cat3 != 0x00))				// Mask out the MSB nibble.
+				//{
+					////USART_putstring("53 C 3");				// comment this out in final product
+					//vote_indicator_53 = 1;					// Indicating button 1 was pressed
+					//no_of_votes_cat3--;
+					////i2c_send_byte(PIC_DEV_ADDR, 53);
+					//deactivate_category_buttons_and_save(button53_addr, 53);  // provide starting and ending buttons as arguments
+				//}
+				if((53 > category_size_3) && (53 <= category_size_4) && (no_of_votes_cat4 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("53C4 ");				// comment this out in final product
+					vote_indicator_53 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat4--;
+					//i2c_send_byte(PIC_DEV_ADDR, 53);
+					deactivate_category_buttons_and_save(button53_addr, 53);  // provide starting and ending buttons as arguments
+				}
+				else if((53 > category_size_4) && (53 <= category_size_5) && (no_of_votes_cat5 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("53C5 ");				// comment this out in final product
+					vote_indicator_53 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat5--;
+					//i2c_send_byte(PIC_DEV_ADDR, 53);
+					deactivate_category_buttons_and_save(button53_addr, 53);  // provide starting and ending buttons as arguments
+				}
+				else if((53 > category_size_5) && (53 <= category_size_6) && (no_of_votes_cat6 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("53C6 ");				// comment this out in final product
+					vote_indicator_53 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat6--;
+					//i2c_send_byte(PIC_DEV_ADDR, 53);
+					deactivate_category_buttons_and_save(button53_addr, 53);  // provide starting and ending buttons as arguments
+				}
+				else if((53 > category_size_6) && (53 <= category_size_7) && (no_of_votes_cat7 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("53C7 ");				// comment this out in final product
+					vote_indicator_53 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat7--;
+					//i2c_send_byte(PIC_DEV_ADDR, 53);
+					deactivate_category_buttons_and_save(button53_addr, 53);  // provide starting and ending buttons as arguments
+				}
+				//else if((53 > category_size_7) && (53 <= category_size_8) && (no_of_votes_cat8 != 0x00))				// Mask out the MSB nibble.
+				//{
+					////USART_putstring("53C8 ");				// comment this out in final product
+					//vote_indicator_53 = 1;					// Indicating button 1 was pressed
+					//no_of_votes_cat8--;
+					////i2c_send_byte(PIC_DEV_ADDR, 53);
+					//deactivate_category_buttons_and_save(button53_addr, 53);  // provide starting and ending buttons as arguments
+				//}
+				else if ((53 > no_of_buttons_in_categories) && (gen_vote_count != 0))
+				{
+					//USART_putstring("53G ");		// comment this out in final product
+					vote_indicator_53 = 1;			// Indicating button 1 was pressed
+					deactivate_category_buttons_and_save(button53_addr, 53);
+					//i2c_send_byte(PIC_DEV_ADDR, 53);
+					gen_vote_count--;
+				}
 			}
-			else if((24 > category_size_2) && (24 <= category_size_3) && (no_of_votes_cat3 != 0))
-			{
-				//USART_putstring("24C3 ");
-				vote_indicator_24 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 24);
-				deactivate_category_buttons_and_save(button24_addr, 24);
-				no_of_votes_cat3--;
-			}
-			else if((24 > category_size_3) && (24 <= category_size_4) && (no_of_votes_cat4 != 0))
-			{
-				//USART_putstring("24C4 ");
-				vote_indicator_24 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 24);
-				deactivate_category_buttons_and_save(button24_addr, 24);
-				no_of_votes_cat4--;
-			}
-			else if((24 > category_size_4) && (24 <= category_size_5) && (no_of_votes_cat5 != 0))
-			{
-				//USART_putstring("24C5 ");
-				vote_indicator_24 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 24);
-				deactivate_category_buttons_and_save(button24_addr, 24);
-				no_of_votes_cat5--;
-			}
-			else if((24 > category_size_5) && (24 <= category_size_6) && (no_of_votes_cat6 != 0))
-			{
-				//USART_putstring("24C6 ");
-				vote_indicator_24 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 24);
-				deactivate_category_buttons_and_save(button24_addr, 24);
-				no_of_votes_cat6--;
-			}
-			else if((24 > category_size_6) && (24 <= category_size_7) && (no_of_votes_cat7 != 0))
-			{
-				//USART_putstring("24C7 ");
-				vote_indicator_24 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 24);
-				deactivate_category_buttons_and_save(button24_addr, 24);
-				no_of_votes_cat7--;
-			}
-			//else if((24 > category_size_7) && (24 <= category_size_8) && (no_of_votes_cat8 != 0))
-			//{
-				////USART_putstring("24C8 ");
-				//vote_indicator_24 = 1;	// Indicating button 12 was presses.
-				////i2c_send_byte(PIC_DEV_ADDR, 24);
-				//deactivate_category_buttons_and_save(button24_addr, 24);
-				//no_of_votes_cat8--;
-			//}
-			else if((24 > no_of_buttons_in_categories) && (gen_vote_count != 0))
-			{
-				//USART_putstring("24G ");		// comment this out in final product
-				vote_indicator_24 = 1;			// Indicating button 1 was pressed
-				deactivate_category_buttons_and_save(button24_addr, 24);
-				//i2c_send_byte(PIC_DEV_ADDR, 24);
-				gen_vote_count--;
-			}
-		}
 		
-		if ((matrix_B_data == 1) && (matrix_A_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 0) && ((PINB & 0x0F) == 0x08) && (25 <= candidate_count) && vote_indicator_25==0)
-		{
-			if((25 > category_size_1) && (25 <= category_size_2) && (no_of_votes_cat2 != 0))
+			if ((matrix_A_data == 0) && (matrix_B_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 1) && ((PINC & 0x0F) == 0x05) && (54 <= candidate_count) && vote_indicator_54 == 0)
 			{
-				//USART_putstring("25C2 ");
-				vote_indicator_25 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 25);
-				deactivate_category_buttons_and_save(button25_addr, 25);
-				no_of_votes_cat2--;
+				//if((54 > category_size_2) && (54 <= category_size_3) && (no_of_votes_cat3 != 0x00))				// Mask out the MSB nibble.
+				//{
+					////USART_putstring("54 C 3");				// comment this out in final product
+					//vote_indicator_54 = 1;					// Indicating button 1 was pressed
+					//no_of_votes_cat3--;
+					////i2c_send_byte(PIC_DEV_ADDR, 54);
+					//deactivate_category_buttons_and_save(button54_addr, 54);  // provide starting and ending buttons as arguments
+				//}
+				if((54 > category_size_3) && (54 <= category_size_4) && (no_of_votes_cat4 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("54C4 ");				// comment this out in final product
+					vote_indicator_54 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat4--;
+					//i2c_send_byte(PIC_DEV_ADDR, 54);
+					deactivate_category_buttons_and_save(button54_addr, 54);  // provide starting and ending buttons as arguments
+				}
+				else if((54 > category_size_4) && (54 <= category_size_5) && (no_of_votes_cat5 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("54C5 ");				// comment this out in final product
+					vote_indicator_54 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat5--;
+					//i2c_send_byte(PIC_DEV_ADDR, 54);
+					deactivate_category_buttons_and_save(button54_addr, 54);  // provide starting and ending buttons as arguments
+				}
+				else if((54 > category_size_5) && (54 <= category_size_6) && (no_of_votes_cat6 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("54C6 ");				// comment this out in final product
+					vote_indicator_54 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat6--;
+					//i2c_send_byte(PIC_DEV_ADDR, 54);
+					deactivate_category_buttons_and_save(button54_addr, 54);  // provide starting and ending buttons as arguments
+				}
+				else if((54 > category_size_6) && (54 <= category_size_7) && (no_of_votes_cat7 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("54C7 ");				// comment this out in final product
+					vote_indicator_54 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat7--;
+					//i2c_send_byte(PIC_DEV_ADDR, 54);
+					deactivate_category_buttons_and_save(button54_addr, 54);  // provide starting and ending buttons as arguments
+				}
+				//else if((54 > category_size_7) && (54 <= category_size_8) && (no_of_votes_cat8 != 0x00))				// Mask out the MSB nibble.
+				//{
+					////USART_putstring("54C8 ");				// comment this out in final product
+					//vote_indicator_54 = 1;					// Indicating button 1 was pressed
+					//no_of_votes_cat8--;
+					////i2c_send_byte(PIC_DEV_ADDR, 54);
+					//deactivate_category_buttons_and_save(button54_addr, 54);  // provide starting and ending buttons as arguments
+				//}
+				else if ((54 > no_of_buttons_in_categories) && (gen_vote_count != 0))
+				{
+					//USART_putstring("54G ");		// comment this out in final product
+					vote_indicator_54 = 1;			// Indicating button 1 was pressed
+					deactivate_category_buttons_and_save(button54_addr, 54);
+					//i2c_send_byte(PIC_DEV_ADDR, 54);
+					gen_vote_count--;
+				}
 			}
-			else if((25 > category_size_2) && (25 <= category_size_3) && (no_of_votes_cat3 != 0))
-			{
-				//USART_putstring("25C3 ");
-				vote_indicator_25 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 25);
-				deactivate_category_buttons_and_save(button25_addr, 25);
-				no_of_votes_cat3--;
-			}
-			else if((25 > category_size_3) && (25 <= category_size_4) && (no_of_votes_cat4 != 0))
-			{
-				//USART_putstring("25C4 ");
-				vote_indicator_25 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 25);
-				deactivate_category_buttons_and_save(button25_addr, 25);
-				no_of_votes_cat4--;
-			}
-			else if((25 > category_size_4) && (25 <= category_size_5) && (no_of_votes_cat5 != 0))
-			{
-				//USART_putstring("25C5 ");
-				vote_indicator_25 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 25);
-				deactivate_category_buttons_and_save(button25_addr, 25);
-				no_of_votes_cat5--;
-			}
-			else if((25 > category_size_5) && (25 <= category_size_6) && (no_of_votes_cat6 != 0))
-			{
-				//USART_putstring("25C6 ");
-				vote_indicator_25 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 25);
-				deactivate_category_buttons_and_save(button25_addr, 25);
-				no_of_votes_cat6--;
-			}
-			else if((25 > category_size_6) && (25 <= category_size_7) && (no_of_votes_cat7 != 0))
-			{
-				//USART_putstring("25C7 ");
-				vote_indicator_25 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 25);
-				deactivate_category_buttons_and_save(button25_addr, 25);
-				no_of_votes_cat7--;
-			}
-			//else if((25 > category_size_7) && (25 <= category_size_8) && (no_of_votes_cat8 != 0))
-			//{
-				////USART_putstring("25C8 ");
-				//vote_indicator_25 = 1;	// Indicating button 12 was presses.
-				////i2c_send_byte(PIC_DEV_ADDR, 25);
-				//deactivate_category_buttons_and_save(button25_addr, 25);
-				//no_of_votes_cat8--;
-			//}
-			else if((25 > no_of_buttons_in_categories) && (gen_vote_count != 0))
-			{
-				//USART_putstring("25G ");		// comment this out in final product
-				vote_indicator_25 = 1;			// Indicating button 1 was pressed
-				deactivate_category_buttons_and_save(button25_addr, 25);
-				//i2c_send_byte(PIC_DEV_ADDR, 25);
-				gen_vote_count--;
-			}
-		}
 		
-		if ((matrix_B_data == 1) && (matrix_A_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 0) && ((PINB & 0x0F) == 0x09) && (26 <= candidate_count) && vote_indicator_26 == 0)
-		{
-			if((26 > category_size_1) && (26 <= category_size_2) && (no_of_votes_cat2 != 0))
+			if ((matrix_A_data == 0) && (matrix_B_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 1) && ((PINC & 0x0F) == 0x06) && (55 <= candidate_count) && vote_indicator_55 == 0)
 			{
-				//USART_putstring("26C2 ");
-				vote_indicator_26 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 26);
-				deactivate_category_buttons_and_save(button26_addr, 26);
-				no_of_votes_cat2--;
+				//if((55 > category_size_2) && (55 <= category_size_3) && (no_of_votes_cat3 != 0x00))				// Mask out the MSB nibble.
+				//{
+					////USART_putstring("55 C 3");				// comment this out in final product
+					//vote_indicator_55 = 1;					// Indicating button 1 was pressed
+					//no_of_votes_cat3--;
+					////i2c_send_byte(PIC_DEV_ADDR, 55);
+					//deactivate_category_buttons_and_save(button55_addr, 55);  // provide starting and ending buttons as arguments
+				//}
+				if((55 > category_size_3) && (55 <= category_size_4) && (no_of_votes_cat4 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("55C4 ");				// comment this out in final product
+					vote_indicator_55 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat4--;
+					//i2c_send_byte(PIC_DEV_ADDR, 55);
+					deactivate_category_buttons_and_save(button55_addr, 55);  // provide starting and ending buttons as arguments
+				}
+				else if((55 > category_size_4) && (55 <= category_size_5) && (no_of_votes_cat5 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("55C5 ");				// comment this out in final product
+					vote_indicator_55 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat5--;
+					//i2c_send_byte(PIC_DEV_ADDR, 55);
+					deactivate_category_buttons_and_save(button55_addr, 55);  // provide starting and ending buttons as arguments
+				}
+				else if((55 > category_size_5) && (55 <= category_size_6) && (no_of_votes_cat6 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("55C6 ");				// comment this out in final product
+					vote_indicator_55 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat6--;
+					//i2c_send_byte(PIC_DEV_ADDR, 55);
+					deactivate_category_buttons_and_save(button55_addr, 55);  // provide starting and ending buttons as arguments
+				}
+				else if((55 > category_size_6) && (55 <= category_size_7) && (no_of_votes_cat7 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("55C7 ");				// comment this out in final product
+					vote_indicator_55 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat7--;
+					//i2c_send_byte(PIC_DEV_ADDR, 55);
+					deactivate_category_buttons_and_save(button55_addr, 55);  // provide starting and ending buttons as arguments
+				}
+				//else if((55 > category_size_7) && (55 <= category_size_8) && (no_of_votes_cat8 != 0x00))				// Mask out the MSB nibble.
+				//{
+					//USART_putstring("55C8 ");				// comment this out in final product
+					//vote_indicator_55 = 1;					// Indicating button 1 was pressed
+					//no_of_votes_cat8--;
+					////i2c_send_byte(PIC_DEV_ADDR, 55);
+					//deactivate_category_buttons_and_save(button55_addr, 55);  // provide starting and ending buttons as arguments
+				//}
+				else if ((55 > no_of_buttons_in_categories) && (gen_vote_count != 0))
+				{
+					//USART_putstring("55G ");		// comment this out in final product
+					vote_indicator_55 = 1;			// Indicating button 1 was pressed
+					deactivate_category_buttons_and_save(button55_addr, 55);
+					//i2c_send_byte(PIC_DEV_ADDR, 55);
+					gen_vote_count--;
+				}
 			}
-			else if((26 > category_size_2) && (26 <= category_size_3) && (no_of_votes_cat3 != 0))
-			{
-				//USART_putstring("26C3 ");
-				vote_indicator_26 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 26);
-				deactivate_category_buttons_and_save(button26_addr, 26);
-				no_of_votes_cat3--;
-			}
-			else if((26 > category_size_3) && (26 <= category_size_4) && (no_of_votes_cat4 != 0))
-			{
-				//USART_putstring("26C4 ");
-				vote_indicator_26 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 26);
-				deactivate_category_buttons_and_save(button26_addr, 26);
-				no_of_votes_cat4--;
-			}
-			else if((26 > category_size_4) && (26 <= category_size_5) && (no_of_votes_cat5 != 0))
-			{
-				//USART_putstring("26C5 ");
-				vote_indicator_26 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 26);
-				deactivate_category_buttons_and_save(button26_addr, 26);
-				no_of_votes_cat5--;
-			}
-			else if((26 > category_size_5) && (26 <= category_size_6) && (no_of_votes_cat6 != 0))
-			{
-				//USART_putstring("26C6 ");
-				vote_indicator_26 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 26);
-				deactivate_category_buttons_and_save(button26_addr, 26);
-				no_of_votes_cat6--;
-			}
-			else if((26 > category_size_6) && (26 <= category_size_7) && (no_of_votes_cat7 != 0))
-			{
-				//USART_putstring("26C7 ");
-				vote_indicator_26 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 26);
-				deactivate_category_buttons_and_save(button26_addr, 26);
-				no_of_votes_cat7--;
-			}
-			else if((26 > category_size_7) && (26 <= category_size_8) && (no_of_votes_cat8 != 0))
-			{
-				//USART_putstring("26C8 ");
-				vote_indicator_26 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 26);
-				deactivate_category_buttons_and_save(button26_addr, 26);
-				no_of_votes_cat8--;
-			}
-			else if((26 > no_of_buttons_in_categories) && (gen_vote_count != 0))
-			{
-				//USART_putstring("26G ");		// comment this out in final product
-				vote_indicator_26 = 1;			// Indicating button 1 was pressed
-				deactivate_category_buttons_and_save(button26_addr, 26);
-				//i2c_send_byte(PIC_DEV_ADDR, 26);
-				gen_vote_count--;
-			}
-		}
 		
-		if ((matrix_B_data == 1) && (matrix_A_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 0) && ((PINB & 0x0F) == 0x0A) && (27 <= candidate_count) && vote_indicator_27==0)
-		{
-			if((27 > category_size_1) && (27 <= category_size_2) && (no_of_votes_cat2 != 0))
+			if ((matrix_A_data == 0) && (matrix_B_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 1) && ((PINC & 0x0F) == 0x07) && (56 <= candidate_count) && vote_indicator_56 == 0)
 			{
-				//USART_putstring("27C2 ");
-				vote_indicator_27 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 27);
-				deactivate_category_buttons_and_save(button27_addr, 27);
-				no_of_votes_cat2--;
+				//if((56 > category_size_2) && (56 <= category_size_3) && (no_of_votes_cat3 != 0x00))				// Mask out the MSB nibble.
+				//{
+					////USART_putstring("56 C 3");				// comment this out in final product
+					//vote_indicator_56 = 1;					// Indicating button 1 was pressed
+					//no_of_votes_cat3--;
+					////i2c_send_byte(PIC_DEV_ADDR, 56);
+					//deactivate_category_buttons_and_save(button56_addr, 56);  // provide starting and ending buttons as arguments
+				//}
+				if((56 > category_size_3) && (56 <= category_size_4) && (no_of_votes_cat4 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("56C4 ");				// comment this out in final product
+					vote_indicator_56 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat4--;
+					//i2c_send_byte(PIC_DEV_ADDR, 56);
+					deactivate_category_buttons_and_save(button56_addr, 56);  // provide starting and ending buttons as arguments
+				}
+				else if((56 > category_size_4) && (56 <= category_size_5) && (no_of_votes_cat5 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("56C5 ");				// comment this out in final product
+					vote_indicator_56 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat5--;
+					//i2c_send_byte(PIC_DEV_ADDR, 56);
+					deactivate_category_buttons_and_save(button56_addr, 56);  // provide starting and ending buttons as arguments
+				}
+				else if((56 > category_size_5) && (56 <= category_size_6) && (no_of_votes_cat6 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("56C6 ");				// comment this out in final product
+					vote_indicator_56 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat6--;
+					//i2c_send_byte(PIC_DEV_ADDR, 56);
+					deactivate_category_buttons_and_save(button56_addr, 56);  // provide starting and ending buttons as arguments
+				}
+				else if((56 > category_size_6) && (56 <= category_size_7) && (no_of_votes_cat7 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("56C7 ");				// comment this out in final product
+					vote_indicator_56 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat7--;
+					//i2c_send_byte(PIC_DEV_ADDR, 56);
+					deactivate_category_buttons_and_save(button56_addr, 56);  // provide starting and ending buttons as arguments
+				}
+				//else if((56 > category_size_7) && (56 <= category_size_8) && (no_of_votes_cat8 != 0x00))				// Mask out the MSB nibble.
+				//{
+					////USART_putstring("56C8 ");				// comment this out in final product
+					//vote_indicator_56 = 1;					// Indicating button 1 was pressed
+					//no_of_votes_cat8--;
+					////i2c_send_byte(PIC_DEV_ADDR, 56);
+					//deactivate_category_buttons_and_save(button56_addr, 56);  // provide starting and ending buttons as arguments
+				//}
+				else if ((56 > no_of_buttons_in_categories) && (gen_vote_count != 0))
+				{
+					//USART_putstring("56G ");		// comment this out in final product
+					vote_indicator_56 = 1;			// Indicating button 1 was pressed
+					deactivate_category_buttons_and_save(button56_addr, 56);
+					//i2c_send_byte(PIC_DEV_ADDR, 56);
+					gen_vote_count--;
+				}
 			}
-			else if((27 > category_size_2) && (27 <= category_size_3) && (no_of_votes_cat3 != 0))
-			{
-				//USART_putstring("27C3 ");
-				vote_indicator_27 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 27);
-				deactivate_category_buttons_and_save(button27_addr, 27);
-				no_of_votes_cat3--;
-			}
-			else if((27 > category_size_3) && (27 <= category_size_4) && (no_of_votes_cat4 != 0))
-			{
-				//USART_putstring("27C4 ");
-				vote_indicator_27 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 27);
-				deactivate_category_buttons_and_save(button27_addr, 27);
-				no_of_votes_cat4--;
-			}
-			else if((27 > category_size_4) && (27 <= category_size_5) && (no_of_votes_cat5 != 0))
-			{
-				//USART_putstring("27C5 ");
-				vote_indicator_27 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 27);
-				deactivate_category_buttons_and_save(button27_addr, 27);
-				no_of_votes_cat5--;
-			}
-			else if((27 > category_size_5) && (27 <= category_size_6) && (no_of_votes_cat6 != 0))
-			{
-				//USART_putstring("27C6 ");
-				vote_indicator_27 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 27);
-				deactivate_category_buttons_and_save(button27_addr, 27);
-				no_of_votes_cat6--;
-			}
-			else if((27 > category_size_6) && (27 <= category_size_7) && (no_of_votes_cat7 != 0))
-			{
-				//USART_putstring("27C7 ");
-				vote_indicator_27 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 27);
-				deactivate_category_buttons_and_save(button27_addr, 27);
-				no_of_votes_cat7--;
-			}
-			//else if((27 > category_size_7) && (27 <= category_size_8) && (no_of_votes_cat8 != 0))
-			//{
-				////USART_putstring("27C8 ");
-				//vote_indicator_27 = 1;	// Indicating button 12 was presses.
-				////i2c_send_byte(PIC_DEV_ADDR, 27);
-				//deactivate_category_buttons_and_save(button27_addr, 27);
-				//no_of_votes_cat8--;
-			//}
-			else if((27 > no_of_buttons_in_categories) && (gen_vote_count != 0))
-			{
-				//USART_putstring("27G ");		// comment this out in final product
-				vote_indicator_27 = 1;			// Indicating button 1 was pressed
-				deactivate_category_buttons_and_save(button27_addr, 27);
-				//i2c_send_byte(PIC_DEV_ADDR, 27);
-				gen_vote_count--;
-			}
-		}
 		
-		if ((matrix_B_data == 1) && (matrix_A_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 0) && ((PINB & 0x0F) == 0x0B) && (28 <= candidate_count) && vote_indicator_28==0)
-		{
-			if((28 > category_size_1) && (28 <= category_size_2) && (no_of_votes_cat2 != 0))
+			if ((matrix_A_data == 0) && (matrix_B_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 1) && ((PINC & 0x0F) == 0x08) && (57 <= candidate_count) && vote_indicator_57 == 0)
 			{
-				//USART_putstring("28C2 ");
-				vote_indicator_28 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 28);
-				deactivate_category_buttons_and_save(button28_addr, 28);
-				no_of_votes_cat2--;
+				//if((57 > category_size_2) && (57 <= category_size_3) && (no_of_votes_cat3 != 0x00))				// Mask out the MSB nibble.
+				//{
+					////USART_putstring("57 C 3");				// comment this out in final product
+					//vote_indicator_57 = 1;					// Indicating button 1 was pressed
+					//no_of_votes_cat3--;
+					////i2c_send_byte(PIC_DEV_ADDR, 57);
+					//deactivate_category_buttons_and_save(button57_addr, 57);  // provide starting and ending buttons as arguments
+				//}
+				if((57 > category_size_3) && (57 <= category_size_4) && (no_of_votes_cat4 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("57C4 ");				// comment this out in final product
+					vote_indicator_57 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat4--;
+					//i2c_send_byte(PIC_DEV_ADDR, 57);
+					deactivate_category_buttons_and_save(button57_addr, 57);  // provide starting and ending buttons as arguments
+				}
+				else if((57 > category_size_4) && (57 <= category_size_5) && (no_of_votes_cat5 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("57C5 ");				// comment this out in final product
+					vote_indicator_57 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat5--;
+					//i2c_send_byte(PIC_DEV_ADDR, 57);
+					deactivate_category_buttons_and_save(button57_addr, 57);  // provide starting and ending buttons as arguments
+				}
+				else if((57 > category_size_5) && (57 <= category_size_6) && (no_of_votes_cat6 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("57C6 ");				// comment this out in final product
+					vote_indicator_57 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat6--;
+					//i2c_send_byte(PIC_DEV_ADDR, 57);
+					deactivate_category_buttons_and_save(button57_addr, 57);  // provide starting and ending buttons as arguments
+				}
+				else if((57 > category_size_6) && (57 <= category_size_7) && (no_of_votes_cat7 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("57C7 ");				// comment this out in final product
+					vote_indicator_57 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat7--;
+					//i2c_send_byte(PIC_DEV_ADDR, 57);
+					deactivate_category_buttons_and_save(button57_addr, 57);  // provide starting and ending buttons as arguments
+				}
+				//else if((57 > category_size_7) && (57 <= category_size_8) && (no_of_votes_cat8 != 0x00))				// Mask out the MSB nibble.
+				//{
+					////USART_putstring("57C8 ");				// comment this out in final product
+					//vote_indicator_57 = 1;					// Indicating button 1 was pressed
+					//no_of_votes_cat8--;
+					////i2c_send_byte(PIC_DEV_ADDR, 57);
+					//deactivate_category_buttons_and_save(button57_addr, 57);  // provide starting and ending buttons as arguments
+				//}
+				else if ((57 > no_of_buttons_in_categories) && (gen_vote_count != 0))
+				{
+					//USART_putstring("57G ");		// comment this out in final product
+					vote_indicator_57 = 1;			// Indicating button 1 was pressed
+					deactivate_category_buttons_and_save(button57_addr, 57);
+					//i2c_send_byte(PIC_DEV_ADDR, 57);
+					gen_vote_count--;
+				}
 			}
-			else if((28 > category_size_2) && (28 <= category_size_3) && (no_of_votes_cat3 != 0))
-			{
-				//USART_putstring("28C3 ");
-				vote_indicator_28 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 28);
-				deactivate_category_buttons_and_save(button28_addr, 28);
-				no_of_votes_cat3--;
-			}
-			else if((28 > category_size_3) && (28 <= category_size_4) && (no_of_votes_cat4 != 0))
-			{
-				//USART_putstring("28C4 ");
-				vote_indicator_28 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 28);
-				deactivate_category_buttons_and_save(button28_addr, 28);
-				no_of_votes_cat4--;
-			}
-			else if((28 > category_size_4) && (28 <= category_size_5) && (no_of_votes_cat5 != 0))
-			{
-				//USART_putstring("28C5 ");
-				vote_indicator_28 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 28);
-				deactivate_category_buttons_and_save(button28_addr, 28);
-				no_of_votes_cat5--;
-			}
-			else if((28 > category_size_5) && (28 <= category_size_6) && (no_of_votes_cat6 != 0))
-			{
-				//USART_putstring("28C6");
-				vote_indicator_28 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 28);
-				deactivate_category_buttons_and_save(button28_addr, 28);
-				no_of_votes_cat6--;
-			}
-			else if((28 > category_size_6) && (28 <= category_size_7) && (no_of_votes_cat7 != 0))
-			{
-				//USART_putstring("28C7");
-				vote_indicator_28 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 28);
-				deactivate_category_buttons_and_save(button28_addr, 28);
-				no_of_votes_cat7--;
-			}
-			//else if((28 > category_size_7) && (28 <= category_size_8) && (no_of_votes_cat8 != 0))
-			//{
-				////USART_putstring("28C8");
-				//vote_indicator_28 = 1;	// Indicating button 12 was presses.
-				////i2c_send_byte(PIC_DEV_ADDR, 28);
-				//deactivate_category_buttons_and_save(button28_addr, 28);
-				//no_of_votes_cat8--;
-			//}
-			else if((28 > no_of_buttons_in_categories) && (gen_vote_count != 0))
-			{
-				//USART_putstring("28G ");		// comment this out in final product
-				vote_indicator_28 = 1;			// Indicating button 1 was pressed
-				deactivate_category_buttons_and_save(button28_addr, 28);
-				//i2c_send_byte(PIC_DEV_ADDR, 28);
-				gen_vote_count--;
-			}
-		}
 		
-		if ((matrix_B_data == 1) && (matrix_A_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 0) && ((PINB & 0x0F) == 0x0C) && (29 <= candidate_count) && vote_indicator_29 == 0)
-		{
-			if((29 > category_size_1) && (29 <= category_size_2) && (no_of_votes_cat2 != 0))
+			if ((matrix_A_data == 0) && (matrix_B_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 1) && ((PINC & 0x0F) == 0x09) && (58 <= candidate_count) && vote_indicator_58 == 0)
 			{
-				//USART_putstring("29C2 ");
-				vote_indicator_29 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 29);
-				deactivate_category_buttons_and_save(button29_addr, 29);
-				no_of_votes_cat2--;
+				//if((58 > category_size_2) && (58 <= category_size_3) && (no_of_votes_cat3 != 0x00))				// Mask out the MSB nibble.
+				//{
+					////USART_putstring("58 C 3");				// comment this out in final product
+					//vote_indicator_58 = 1;					// Indicating button 1 was pressed
+					//no_of_votes_cat3--;
+					////i2c_send_byte(PIC_DEV_ADDR, 58);
+					//deactivate_category_buttons_and_save(button58_addr, 58);  // provide starting and ending buttons as arguments
+				//}
+				if((58 > category_size_3) && (58 <= category_size_4) && (no_of_votes_cat4 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("58C4 ");				// comment this out in final product
+					vote_indicator_58 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat4--;
+					//i2c_send_byte(PIC_DEV_ADDR, 58);
+					deactivate_category_buttons_and_save(button58_addr, 58);  // provide starting and ending buttons as arguments
+				}
+				else if((58 > category_size_4) && (58 <= category_size_5) && (no_of_votes_cat5 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("58C5 ");				// comment this out in final product
+					vote_indicator_58 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat5--;
+					//i2c_send_byte(PIC_DEV_ADDR, 58);
+					deactivate_category_buttons_and_save(button58_addr, 58);  // provide starting and ending buttons as arguments
+				}
+				else if((58 > category_size_5) && (58 <= category_size_6) && (no_of_votes_cat6 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("58C6 ");				// comment this out in final product
+					vote_indicator_58 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat6--;
+					//i2c_send_byte(PIC_DEV_ADDR, 58);
+					deactivate_category_buttons_and_save(button58_addr, 58);  // provide starting and ending buttons as arguments
+				}
+				else if((58 > category_size_6) && (58 <= category_size_7) && (no_of_votes_cat7 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("58C7 ");				// comment this out in final product
+					vote_indicator_58 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat7--;
+					//i2c_send_byte(PIC_DEV_ADDR, 58);
+					deactivate_category_buttons_and_save(button58_addr, 58);  // provide starting and ending buttons as arguments
+				}
+				//else if((58 > category_size_7) && (58 <= category_size_8) && (no_of_votes_cat8 != 0x00))				// Mask out the MSB nibble.
+				//{
+					////USART_putstring("58C8 ");				// comment this out in final product
+					//vote_indicator_58 = 1;					// Indicating button 1 was pressed
+					//no_of_votes_cat8--;
+					////i2c_send_byte(PIC_DEV_ADDR, 58);
+					//deactivate_category_buttons_and_save(button58_addr, 58);  // provide starting and ending buttons as arguments
+				//}
+				else if ((58 > no_of_buttons_in_categories) && (gen_vote_count != 0))
+				{
+					//USART_putstring("58G ");		// comment this out in final product
+					vote_indicator_58 = 1;			// Indicating button 1 was pressed
+					deactivate_category_buttons_and_save(button58_addr, 58);
+					//i2c_send_byte(PIC_DEV_ADDR, 58);
+					gen_vote_count--;
+				}
 			}
-			else if((29 > category_size_2) && (29 <= category_size_3) && (no_of_votes_cat3 != 0))
-			{
-				//USART_putstring("29C3 ");
-				vote_indicator_29 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 29);
-				deactivate_category_buttons_and_save(button29_addr, 29);
-				no_of_votes_cat3--;
-			}
-			else if((29 > category_size_3) && (29 <= category_size_4) && (no_of_votes_cat4 != 0))
-			{
-				//USART_putstring("29C4 ");
-				vote_indicator_29 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 29);
-				deactivate_category_buttons_and_save(button29_addr, 29);
-				no_of_votes_cat4--;
-			}
-			else if((29 > category_size_4) && (29 <= category_size_5) && (no_of_votes_cat5 != 0))
-			{
-				//USART_putstring("29C5 ");
-				vote_indicator_29 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 29);
-				deactivate_category_buttons_and_save(button29_addr, 29);
-				no_of_votes_cat5--;
-			}
-			else if((29 > category_size_5) && (29 <= category_size_6) && (no_of_votes_cat6 != 0))
-			{
-				//USART_putstring("29C6 ");
-				vote_indicator_29 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 29);
-				deactivate_category_buttons_and_save(button29_addr, 29);
-				no_of_votes_cat6--;
-			}
-			else if((29 > category_size_6) && (29 <= category_size_7) && (no_of_votes_cat7 != 0))
-			{
-				//USART_putstring("29C7 ");
-				vote_indicator_29 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 29);
-				deactivate_category_buttons_and_save(button29_addr, 29);
-				no_of_votes_cat7--;
-			}
-			//else if((29 > category_size_7) && (29 <= category_size_8) && (no_of_votes_cat8 != 0))
-			//{
-				////USART_putstring("29C8 ");
-				//vote_indicator_29 = 1;	// Indicating button 12 was presses.
-				////i2c_send_byte(PIC_DEV_ADDR, 29);
-				//deactivate_category_buttons_and_save(button29_addr, 29);
-				//no_of_votes_cat8--;
-			//}
-			else if((29 > no_of_buttons_in_categories) && (gen_vote_count != 0))
-			{
-				//USART_putstring("29G ");		// comment this out in final product
-				vote_indicator_29 = 1;			// Indicating button 1 was pressed
-				deactivate_category_buttons_and_save(button29_addr, 29);
-				//i2c_send_byte(PIC_DEV_ADDR, 29);
-				gen_vote_count--;
-			}
-		}
 		
-		if ((matrix_B_data == 1) && (matrix_A_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 0) && ((PINB & 0x0F) == 0x0D) && (30 <= candidate_count) && vote_indicator_30==0)
-		{
-			if((30 > category_size_1) && (30 <= category_size_2) && (no_of_votes_cat2 != 0))
+			if ((matrix_A_data == 0) && (matrix_B_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 1) && ((PINC & 0x0F) == 0x0A) && (59 <= candidate_count) && vote_indicator_59 == 0)
 			{
-				//USART_putstring("30C2 ");
-				vote_indicator_30 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 30);
-				deactivate_category_buttons_and_save(button30_addr, 30);
-				no_of_votes_cat2--;
+				//if((59 > category_size_2) && (59 <= category_size_3) && (no_of_votes_cat3 != 0x00))				// Mask out the MSB nibble.
+				//{
+					////USART_putstring("59 C 3");				// comment this out in final product
+					//vote_indicator_59 = 1;					// Indicating button 1 was pressed
+					//no_of_votes_cat3--;
+					////i2c_send_byte(PIC_DEV_ADDR, 59);
+					//deactivate_category_buttons_and_save(button59_addr, 59);  // provide starting and ending buttons as arguments
+				//}
+				if((59 > category_size_3) && (59 <= category_size_4) && (no_of_votes_cat4 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("59C4 ");				// comment this out in final product
+					vote_indicator_59 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat4--;
+					//i2c_send_byte(PIC_DEV_ADDR, 59);
+					deactivate_category_buttons_and_save(button59_addr, 59);  // provide starting and ending buttons as arguments
+				}
+				else if((59 > category_size_4) && (59 <= category_size_5) && (no_of_votes_cat5 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("59C5 ");				// comment this out in final product
+					vote_indicator_59 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat5--;
+					//i2c_send_byte(PIC_DEV_ADDR, 59);
+					deactivate_category_buttons_and_save(button59_addr, 59);  // provide starting and ending buttons as arguments
+				}
+				else if((59 > category_size_5) && (59 <= category_size_6) && (no_of_votes_cat6 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("59C6 ");				// comment this out in final product
+					vote_indicator_59 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat6--;
+					//i2c_send_byte(PIC_DEV_ADDR, 59);
+					deactivate_category_buttons_and_save(button59_addr, 59);  // provide starting and ending buttons as arguments
+				}
+				else if((59 > category_size_6) && (59 <= category_size_7) && (no_of_votes_cat7 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("59C7 ");				// comment this out in final product
+					vote_indicator_59 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat7--;
+					//i2c_send_byte(PIC_DEV_ADDR, 59);
+					deactivate_category_buttons_and_save(button59_addr, 59);  // provide starting and ending buttons as arguments
+				}
+				//else if((59 > category_size_8) && (59 <= category_size_8) && (no_of_votes_cat8 != 0x00))				// Mask out the MSB nibble.
+				//{
+					////USART_putstring("59C8 ");				// comment this out in final product
+					//vote_indicator_59 = 1;					// Indicating button 1 was pressed
+					//no_of_votes_cat8--;
+					////i2c_send_byte(PIC_DEV_ADDR, 59);
+					//deactivate_category_buttons_and_save(button59_addr, 59);  // provide starting and ending buttons as arguments
+				//}
+				else if ((59 > no_of_buttons_in_categories) && (gen_vote_count != 0))
+				{
+					//USART_putstring("59G ");		// comment this out in final product
+					vote_indicator_59 = 1;			// Indicating button 1 was pressed
+					deactivate_category_buttons_and_save(button59_addr, 59);
+					//i2c_send_byte(PIC_DEV_ADDR, 59);
+					gen_vote_count--;
+				}
 			}
-			else if((30 > category_size_2) && (30 <= category_size_3) && (no_of_votes_cat3 != 0))
-			{
-				//USART_putstring("30C3 ");
-				vote_indicator_30 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 30);
-				deactivate_category_buttons_and_save(button30_addr, 30);
-				no_of_votes_cat3--;
-			}
-			else if((30 > category_size_3) && (30 <= category_size_4) && (no_of_votes_cat4 != 0))
-			{
-				//USART_putstring("30C4 ");
-				vote_indicator_30 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 30);
-				deactivate_category_buttons_and_save(button30_addr, 30);
-				no_of_votes_cat4--;
-			}
-			else if((30 > category_size_4) && (30 <= category_size_5) && (no_of_votes_cat5 != 0))
-			{
-				//USART_putstring("30C5 ");
-				vote_indicator_30 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 30);
-				deactivate_category_buttons_and_save(button30_addr, 30);
-				no_of_votes_cat5--;
-			}
-			else if((30 > category_size_5) && (30 <= category_size_6) && (no_of_votes_cat6 != 0))
-			{
-				//USART_putstring("30C6 ");
-				vote_indicator_30 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 30);
-				deactivate_category_buttons_and_save(button30_addr, 30);
-				no_of_votes_cat6--;
-			}
-			else if((30 > category_size_6) && (30 <= category_size_7) && (no_of_votes_cat7 != 0))
-			{
-				//USART_putstring("30C7 ");
-				vote_indicator_30 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 30);
-				deactivate_category_buttons_and_save(button30_addr, 30);
-				no_of_votes_cat7--;
-			}
-			else if((30 > category_size_7) && (30 <= category_size_8) && (no_of_votes_cat8 != 0))
-			{
-				//USART_putstring("30C8 ");
-				vote_indicator_30 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 30);
-				deactivate_category_buttons_and_save(button30_addr, 30);
-				no_of_votes_cat8--;
-			}
-			else if((30 > no_of_buttons_in_categories) && (gen_vote_count != 0))
-			{
-				//USART_putstring("30G ");		// comment this out in final product
-				vote_indicator_30 = 1;			// Indicating button 1 was pressed
-				deactivate_category_buttons_and_save(button30_addr, 30);
-				//i2c_send_byte(PIC_DEV_ADDR, 30);
-				gen_vote_count--;
-			}
-		}
 		
-		if ((matrix_B_data == 1) && (matrix_A_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 0) && ((PINB & 0x0F) == 0x0E) && (31 <= candidate_count) && vote_indicator_31==0)
-		{
-			if((31 > category_size_2) && (31 <= category_size_3) && (no_of_votes_cat3 != 0))
+			if ((matrix_A_data == 0) && (matrix_B_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 1) && ((PINC & 0x0F) == 0x0B) && (60 <= candidate_count) && vote_indicator_60 == 0)
 			{
-				//USART_putstring("31C3 ");
-				vote_indicator_31 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 31);
-				deactivate_category_buttons_and_save(button31_addr, 31);
-				no_of_votes_cat3--;
+				//if((60 > category_size_2) && (60 <= category_size_3) && (no_of_votes_cat3 != 0x00))				// Mask out the MSB nibble.
+				//{
+					////USART_putstring("60 C 3");				// comment this out in final product
+					//vote_indicator_60 = 1;					// Indicating button 1 was pressed
+					//no_of_votes_cat3--;
+					////i2c_send_byte(PIC_DEV_ADDR, 60);
+					//deactivate_category_buttons_and_save(button60_addr, 60);  // provide starting and ending buttons as arguments
+				//}
+				if((60 > category_size_3) && (60 <= category_size_4) && (no_of_votes_cat4 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("60C4 ");				// comment this out in final product
+					vote_indicator_60 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat4--;
+					//i2c_send_byte(PIC_DEV_ADDR, 60);
+					deactivate_category_buttons_and_save(button60_addr, 60);  // provide starting and ending buttons as arguments
+				}
+				else if((60 > category_size_4) && (60 <= category_size_5) && (no_of_votes_cat5 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("60C5 ");				// comment this out in final product
+					vote_indicator_60 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat5--;
+					//i2c_send_byte(PIC_DEV_ADDR, 60);
+					deactivate_category_buttons_and_save(button60_addr, 60);  // provide starting and ending buttons as arguments
+				}
+				else if((60 > category_size_5) && (60 <= category_size_6) && (no_of_votes_cat6 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("60C6 ");				// comment this out in final product
+					vote_indicator_60 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat6--;
+					//i2c_send_byte(PIC_DEV_ADDR, 60);
+					deactivate_category_buttons_and_save(button60_addr, 60);  // provide starting and ending buttons as arguments
+				}
+				else if((60 > category_size_6) && (60 <= category_size_7) && (no_of_votes_cat7 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("60C7 ");				// comment this out in final product
+					vote_indicator_60 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat7--;
+					//i2c_send_byte(PIC_DEV_ADDR, 60);
+					deactivate_category_buttons_and_save(button60_addr, 60);  // provide starting and ending buttons as arguments
+				}
+				//else if((60 > category_size_7) && (60 <= category_size_8) && (no_of_votes_cat8 != 0x00))				// Mask out the MSB nibble.
+				//{
+					////USART_putstring("60C8 ");				// comment this out in final product
+					//vote_indicator_60 = 1;					// Indicating button 1 was pressed
+					//no_of_votes_cat8--;
+					////i2c_send_byte(PIC_DEV_ADDR, 60);
+					//deactivate_category_buttons_and_save(button60_addr, 60);  // provide starting and ending buttons as arguments
+				//}
+				else if ((60 > no_of_buttons_in_categories) && (gen_vote_count != 0))
+				{
+					//USART_putstring("60G ");		// comment this out in final product
+					vote_indicator_60 = 1;			// Indicating button 1 was pressed
+					deactivate_category_buttons_and_save(button60_addr, 60);
+					//i2c_send_byte(PIC_DEV_ADDR, 60);
+					gen_vote_count--;
+				}
 			}
-			if((31 > category_size_3) && (31 <= category_size_4) && (no_of_votes_cat4 != 0))
-			{
-				//USART_putstring("31C4 ");
-				vote_indicator_31 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 31);
-				deactivate_category_buttons_and_save(button31_addr, 31);
-				no_of_votes_cat4--;
-			}
-			else if((31 > category_size_4) && (31 <= category_size_5) && (no_of_votes_cat5 != 0))
-			{
-				//USART_putstring("31C5 ");
-				vote_indicator_31 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 31);
-				deactivate_category_buttons_and_save(button31_addr, 31);
-				no_of_votes_cat5--;
-			}
-			else if((31 > category_size_5) && (31 <= category_size_6) && (no_of_votes_cat6 != 0))
-			{
-				//USART_putstring("31C6 ");
-				vote_indicator_31 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 31);
-				deactivate_category_buttons_and_save(button31_addr, 31);
-				no_of_votes_cat6--;
-			}
-			else if((31 > category_size_6) && (31 <= category_size_7) && (no_of_votes_cat7 != 0))
-			{
-				//USART_putstring("31C7 ");
-				vote_indicator_31 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 31);
-				deactivate_category_buttons_and_save(button31_addr, 31);
-				no_of_votes_cat7--;
-			}
-			//else if((31 > category_size_7) && (31 <= category_size_8) && (no_of_votes_cat8 != 0))
-			//{
-				//USART_putstring("31C8 ");
-				//vote_indicator_31 = 1;	// Indicating button 12 was presses.
-				////i2c_send_byte(PIC_DEV_ADDR, 31);
-				//deactivate_category_buttons_and_save(button31_addr, 31);
-				//no_of_votes_cat8--;
-			//}
-			else if((31 > no_of_buttons_in_categories) && (gen_vote_count != 0))
-			{
-				//USART_putstring("31G ");		// comment this out in final product
-				vote_indicator_31 = 1;			// Indicating button 1 was pressed
-				deactivate_category_buttons_and_save(button31_addr, 31);
-				//i2c_send_byte(PIC_DEV_ADDR, 31);
-				gen_vote_count--;
-			}
-		}
 		
-		if ((matrix_B_data == 1) && (matrix_A_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 0) && ((PINB & 0x0F) == 0x0F) && (32 <= candidate_count) && vote_indicator_32==0)
-		{
-			if((32 > category_size_2) && (32 <= category_size_3) && (no_of_votes_cat3 != 0))
+			if ((matrix_A_data == 0) && (matrix_B_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 1) && ((PINC & 0x0F) == 0x0C) && (61 <= candidate_count) && vote_indicator_61 == 0)
 			{
-				//USART_putstring("32C3 ");
-				vote_indicator_32 = 1;		// Indicating button 32 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 32);
-				deactivate_category_buttons_and_save(button32_addr, 32);
-				no_of_votes_cat3--;
+				//if((61 > category_size_2) && (61 <= category_size_3) && (no_of_votes_cat3 != 0x00))				// Mask out the MSB nibble.
+				//{
+					////USART_putstring("61 C 3");				// comment this out in final product
+					//vote_indicator_61 = 1;					// Indicating button 1 was pressed
+					//no_of_votes_cat3--;
+					////i2c_send_byte(PIC_DEV_ADDR, 61);
+					//deactivate_category_buttons_and_save(button61_addr, 61);  // provide starting and ending buttons as arguments
+				//}
+				//else if((61 > category_size_4) && (61 <= category_size_5) && (no_of_votes_cat4 != 0x00))				// Mask out the MSB nibble.
+				//{
+					////USART_putstring("61 C 4");				// comment this out in final product
+					//vote_indicator_61 = 1;					// Indicating button 1 was pressed
+					//no_of_votes_cat4--;
+					////i2c_send_byte(PIC_DEV_ADDR, 61);
+					//deactivate_category_buttons_and_save(button61_addr, 61);  // provide starting and ending buttons as arguments
+				//}
+				if((61 > category_size_4) && (61 <= category_size_5) && (no_of_votes_cat5 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("61C5 ");				// comment this out in final product
+					vote_indicator_61 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat5--;
+					//i2c_send_byte(PIC_DEV_ADDR, 61);
+					deactivate_category_buttons_and_save(button61_addr, 61);  // provide starting and ending buttons as arguments
+				}
+				else if((61 > category_size_5) && (61 <= category_size_6) && (no_of_votes_cat6 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("61C6 ");				// comment this out in final product
+					vote_indicator_61 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat6--;
+					//i2c_send_byte(PIC_DEV_ADDR, 61);
+					deactivate_category_buttons_and_save(button61_addr, 61);  // provide starting and ending buttons as arguments
+				}
+				else if((61 > category_size_6) && (61 <= category_size_7) && (no_of_votes_cat7 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("61C7 ");				// comment this out in final product
+					vote_indicator_61 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat7--;
+					//i2c_send_byte(PIC_DEV_ADDR, 61);
+					deactivate_category_buttons_and_save(button61_addr, 61);  // provide starting and ending buttons as arguments
+				}
+				//else if((61 > category_size_7) && (61 <= category_size_8) && (no_of_votes_cat8 != 0x00))				// Mask out the MSB nibble.
+				//{
+					////USART_putstring("61C8 ");				// comment this out in final product
+					//vote_indicator_61 = 1;					// Indicating button 1 was pressed
+					//no_of_votes_cat8--;
+					////i2c_send_byte(PIC_DEV_ADDR, 61);
+					//deactivate_category_buttons_and_save(button61_addr, 61);  // provide starting and ending buttons as arguments
+				//}
+				else if ((61 > no_of_buttons_in_categories) && (gen_vote_count != 0))
+				{
+					//USART_putstring("61G ");		// comment this out in final product
+					vote_indicator_61 = 1;			// Indicating button 1 was pressed
+					deactivate_category_buttons_and_save(button61_addr, 61);
+					//i2c_send_byte(PIC_DEV_ADDR, 61);
+					gen_vote_count--;
+				}
 			}
-			if((32 > category_size_3) && (32 <= category_size_4) && (no_of_votes_cat4 != 0))
-			{
-				//USART_putstring("32C4 ");
-				vote_indicator_32 = 1;		// Indicating button 32 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 32);
-				deactivate_category_buttons_and_save(button32_addr, 32);
-				no_of_votes_cat4--;
-			}
-			else if((32 > category_size_4) && (32 <= category_size_5) && (no_of_votes_cat5 != 0))
-			{
-				//USART_putstring("32 C 5");
-				vote_indicator_32 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 32);
-				deactivate_category_buttons_and_save(button32_addr, 32);
-				no_of_votes_cat5--;
-			}
-			else if((32 > category_size_5) && (32 <= category_size_6) && (no_of_votes_cat6 != 0))
-			{
-				//USART_putstring("32C6 ");
-				vote_indicator_32 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 32);
-				deactivate_category_buttons_and_save(button32_addr, 32);
-				no_of_votes_cat6--;
-			}
-			else if((32 > category_size_6) && (32 <= category_size_7) && (no_of_votes_cat7 != 0))
-			{
-				//USART_putstring("32C7 ");
-				vote_indicator_32 = 1;	// Indicating button 12 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 32);
-				deactivate_category_buttons_and_save(button32_addr, 32);
-				no_of_votes_cat7--;
-			}
-			//else if((32 > category_size_7) && (32 <= category_size_8) && (no_of_votes_cat8 != 0))
-			//{
-				////USART_putstring("32C8 ");
-				//vote_indicator_32 = 1;	// Indicating button 12 was presses.
-				////i2c_send_byte(PIC_DEV_ADDR, 32);
-				//deactivate_category_buttons_and_save(button32_addr, 32);
-				//no_of_votes_cat8--;
-			//}
-			else if((32 > no_of_buttons_in_categories) && (gen_vote_count != 0))
-			{
-				//USART_putstring("32G ");		// comment this out in final product
-				vote_indicator_32 = 1;			// Indicating button 1 was pressed
-				deactivate_category_buttons_and_save(button32_addr, 32);
-				//i2c_send_byte(PIC_DEV_ADDR, 32);
-				gen_vote_count--;
-			}
-		}
-/************************************************  Half Mark  ***********************************************************************************/		
-		if ((matrix_A_data == 0) && (matrix_B_data == 0) && (matrix_C_data == 1) && (matrix_D_data == 0) && ((PINB & 0x0F) == 0x00) && (33 <= candidate_count) && vote_indicator_33 == 0)
-		{
-			if((33 > category_size_2) && (33 <= category_size_3) && (no_of_votes_cat3 != 0x00))
-			{
-				//USART_putstring("33C3 ");
-				vote_indicator_33 = 1;					// Indicating button 33 was presses.
-				//i2c_send_byte(PIC_DEV_ADDR, 33);
-				deactivate_category_buttons_and_save(button33_addr, 33);
-				no_of_votes_cat3--;
-			}
-			else if((33 > category_size_3) && (33 <= category_size_4) && (no_of_votes_cat4 != 0x00))				
-			{
-				//USART_putstring("33C4 ");			// comment this out in final product
-				vote_indicator_33 = 1;					// Indicating button 33 was pressed
-				no_of_votes_cat4--;
-				//i2c_send_byte(PIC_DEV_ADDR, 33);
-				deactivate_category_buttons_and_save(button33_addr, 33);  // provide starting and ending buttons as arguments
-			}
-			else if((33 > category_size_4) && (33 <= category_size_5) && (no_of_votes_cat5 != 0x00))				
-			{
-				//USART_putstring("33C5 ");				// comment this out in final product
-				vote_indicator_33 = 1;					// Indicating button 33 was pressed
-				no_of_votes_cat5--;
-				//i2c_send_byte(PIC_DEV_ADDR, 33);
-				deactivate_category_buttons_and_save(button33_addr, 33);  // provide starting and ending buttons as arguments
-			}
-			else if((33 > category_size_5) && (33 <= category_size_6) && (no_of_votes_cat6 != 0x00))				
-			{	
-				//USART_putstring("33C6 ");				// comment this out in final product
-				vote_indicator_33 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat6--;
-				//i2c_send_byte(PIC_DEV_ADDR, 33);
-				deactivate_category_buttons_and_save(button33_addr, 33);  // provide starting and ending buttons as arguments
-			}
-			else if((33 > category_size_6) && (33 <= category_size_7) && (no_of_votes_cat7 != 0x00))
-			{
-				//USART_putstring("33C7 ");				// comment this out in final product
-				vote_indicator_33 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat7--;
-				//i2c_send_byte(PIC_DEV_ADDR, 33);
-				deactivate_category_buttons_and_save(button33_addr, 33);  // provide starting and ending buttons as arguments
-			}
-			//else if((33 > category_size_7) && (33 <= category_size_8) && (no_of_votes_cat8 != 0x00))
-			//{
-				////USART_putstring("33C8 ");				// comment this out in final product
-				//vote_indicator_33 = 1;					// Indicating button 1 was pressed
-				//no_of_votes_cat8--;
-				////i2c_send_byte(PIC_DEV_ADDR, 33);
-				//deactivate_category_buttons_and_save(button33_addr, 33);  // provide starting and ending buttons as arguments
-			//}
-			else if ((33 > no_of_buttons_in_categories) && (gen_vote_count != 0))
-			{
-				//USART_putstring("33 G ");		// comment this out in final product
-				vote_indicator_33 = 1;			// Indicating button 1 was pressed
-				deactivate_category_buttons_and_save(button33_addr, 33);
-				//i2c_send_byte(PIC_DEV_ADDR, 33);
-				gen_vote_count--;
-			}
-		}
 		
-		if ((matrix_A_data == 0) && (matrix_B_data == 0) && (matrix_C_data == 1) && (matrix_D_data == 0) && ((PINB & 0x0F) == 0x01) && (34 <= candidate_count) && vote_indicator_34 == 0)
-		{
-			if((34 > category_size_2) && (34 <= category_size_3) && (no_of_votes_cat3 != 0x00))				// Mask out the MSB nibble.
+			if ((matrix_A_data == 0) && (matrix_B_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 1) && ((PINC & 0x0F) == 0x0D) && (62 <= candidate_count) && vote_indicator_62 == 0)
 			{
-				//USART_putstring("34C3 ");				// comment this out in final product
-				vote_indicator_34 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat3--;
-				//i2c_send_byte(PIC_DEV_ADDR, 34);
-				deactivate_category_buttons_and_save(button34_addr, 34);  // provide starting and ending buttons as arguments
+				//if((62 > category_size_2) && (62 <= category_size_3) && (no_of_votes_cat3 != 0x00))				// Mask out the MSB nibble.
+				//{
+					////USART_putstring("62 C 3");				// comment this out in final product
+					//vote_indicator_62 = 1;					// Indicating button 1 was pressed
+					//no_of_votes_cat3--;
+					////i2c_send_byte(PIC_DEV_ADDR, 62);
+					//deactivate_category_buttons_and_save(button62_addr, 62);  // provide starting and ending buttons as arguments
+				//}
+				//if((62 > category_size_4) && (62 <= category_size_5) && (no_of_votes_cat4 != 0x00))				// Mask out the MSB nibble.
+				//{
+					////USART_putstring("62 C 4");				// comment this out in final product
+					//vote_indicator_62 = 1;					// Indicating button 1 was pressed
+					//no_of_votes_cat4--;
+					////i2c_send_byte(PIC_DEV_ADDR, 62);
+					//deactivate_category_buttons_and_save(button62_addr, 62);  // provide starting and ending buttons as arguments
+				//}
+				if((62 > category_size_4) && (62 <= category_size_5) && (no_of_votes_cat5 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("62C5 ");				// comment this out in final product
+					vote_indicator_62 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat5--;
+					//i2c_send_byte(PIC_DEV_ADDR, 62);
+					deactivate_category_buttons_and_save(button62_addr, 62);  // provide starting and ending buttons as arguments
+				}
+				else if((62 > category_size_5) && (62 <= category_size_6) && (no_of_votes_cat6 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("62C6 ");				// comment this out in final product
+					vote_indicator_62 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat6--;
+					//i2c_send_byte(PIC_DEV_ADDR, 62);
+					deactivate_category_buttons_and_save(button62_addr, 62);  // provide starting and ending buttons as arguments
+				}
+				else if((62 > category_size_6) && (62 <= category_size_7) && (no_of_votes_cat7 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("62C7 ");				// comment this out in final product
+					vote_indicator_62 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat7--;
+					//i2c_send_byte(PIC_DEV_ADDR, 62);
+					deactivate_category_buttons_and_save(button62_addr, 62);  // provide starting and ending buttons as arguments
+				}
+				//else if((62 > category_size_7) && (62 <= category_size_8) && (no_of_votes_cat8 != 0x00))				// Mask out the MSB nibble.
+				//{
+					////USART_putstring("62C8 ");				// comment this out in final product
+					//vote_indicator_62 = 1;					// Indicating button 1 was pressed
+					//no_of_votes_cat8--;
+					////i2c_send_byte(PIC_DEV_ADDR, 62);
+					//deactivate_category_buttons_and_save(button62_addr, 62);  // provide starting and ending buttons as arguments
+				//}
+				else if ((62 > no_of_buttons_in_categories) && (gen_vote_count != 0))
+				{
+					//USART_putstring("62G ");		// comment this out in final product
+					vote_indicator_62 = 1;			// Indicating button 1 was pressed
+					deactivate_category_buttons_and_save(button62_addr, 62);
+					//i2c_send_byte(PIC_DEV_ADDR, 62);
+					gen_vote_count--;
+				}
 			}
-			else if((34 > category_size_3) && (34 <= category_size_4) && (no_of_votes_cat4 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("34C4 ");				// comment this out in final product
-				vote_indicator_34 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat4--;
-				//i2c_send_byte(PIC_DEV_ADDR, 34);
-				deactivate_category_buttons_and_save(button34_addr, 34);  // provide starting and ending buttons as arguments
-			}
-			else if((34 > category_size_4) && (34 <= category_size_5) && (no_of_votes_cat5 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("34C5 ");				// comment this out in final product
-				vote_indicator_34 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat5--;
-				//i2c_send_byte(PIC_DEV_ADDR, 34);
-				deactivate_category_buttons_and_save(button34_addr, 34);  // provide starting and ending buttons as arguments
-			}
-			else if((34 > category_size_5) && (34 <= category_size_6) && (no_of_votes_cat6 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("34C6 ");				// comment this out in final product
-				vote_indicator_34 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat6--;
-				//i2c_send_byte(PIC_DEV_ADDR, 34);
-				deactivate_category_buttons_and_save(button34_addr, 34);  // provide starting and ending buttons as arguments
-			}
-			else if((34 > category_size_6) && (34 <= category_size_7) && (no_of_votes_cat7 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("34C7 ");				// comment this out in final product
-				vote_indicator_34 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat7--;
-				//i2c_send_byte(PIC_DEV_ADDR, 34);
-				deactivate_category_buttons_and_save(button34_addr, 34);  // provide starting and ending buttons as arguments
-			}
-			//else if((34 > category_size_7) && (34 <= category_size_8) && (no_of_votes_cat6 != 0x00))				// Mask out the MSB nibble.
-			//{
-				////USART_putstring("34C8 ");				// comment this out in final product
-				//vote_indicator_34 = 1;					// Indicating button 1 was pressed
-				//no_of_votes_cat8--;
-				////i2c_send_byte(PIC_DEV_ADDR, 34);
-				//deactivate_category_buttons_and_save(button34_addr, 34);  // provide starting and ending buttons as arguments
-			//}
-			else if ((34 > no_of_buttons_in_categories) && (gen_vote_count != 0))
-			{
-				//USART_putstring("34G ");		// comment this out in final product
-				vote_indicator_34 = 1;			// Indicating button 1 was pressed
-				deactivate_category_buttons_and_save(button34_addr, 34);
-				//i2c_send_byte(PIC_DEV_ADDR, 34);
-				gen_vote_count--;
-			}
-		}
 		
-		if ((matrix_A_data == 0) && (matrix_B_data == 0) && (matrix_C_data == 1) && (matrix_D_data == 0) && ((PINB & 0x0F) == 0x02)  && (35 <= candidate_count) && vote_indicator_35 == 0)
-		{
-			if((35 > category_size_2) && (35 <= category_size_3) && (no_of_votes_cat3 != 0x00))				// Mask out the MSB nibble.
+			if ((matrix_A_data == 0) && (matrix_B_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 1) && ((PINC & 0x0F) == 0x0E) && (63 <= candidate_count) && vote_indicator_63 == 0)
 			{
-				//USART_putstring("35C3 ");				// comment this out in final product
-				vote_indicator_35 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat3--;
-				//i2c_send_byte(PIC_DEV_ADDR, 35);
-				deactivate_category_buttons_and_save(button35_addr, 35);  // provide starting and ending buttons as arguments
+				//if((63 > category_size_2) && (63 <= category_size_3) && (no_of_votes_cat3 != 0x00))				// Mask out the MSB nibble.
+				//{
+					////USART_putstring("63 C 3");				// comment this out in final product
+					//vote_indicator_63 = 1;					// Indicating button 1 was pressed
+					//no_of_votes_cat3--;
+					////i2c_send_byte(PIC_DEV_ADDR, 63);
+					//deactivate_category_buttons_and_save(button63_addr, 63);  // provide starting and ending buttons as arguments
+				//}
+				//if((63 > category_size_4) && (63 <= category_size_5) && (no_of_votes_cat4 != 0x00))				// Mask out the MSB nibble.
+				//{
+					////USART_putstring("63 C 4");				// comment this out in final product
+					//vote_indicator_63 = 1;					// Indicating button 1 was pressed
+					//no_of_votes_cat4--;
+					////i2c_send_byte(PIC_DEV_ADDR, 63);
+					//deactivate_category_buttons_and_save(button63_addr, 63);  // provide starting and ending buttons as arguments
+				//}
+				if((63 > category_size_4) && (63 <= category_size_5) && (no_of_votes_cat5 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("63C5 ");				// comment this out in final product
+					vote_indicator_63 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat5--;
+					//i2c_send_byte(PIC_DEV_ADDR, 63);
+					deactivate_category_buttons_and_save(button63_addr, 63);  // provide starting and ending buttons as arguments
+				}
+				else if((63 > category_size_5) && (63 <= category_size_6) && (no_of_votes_cat6 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("63C6 ");				// comment this out in final product
+					vote_indicator_63 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat6--;
+					//i2c_send_byte(PIC_DEV_ADDR, 63);
+					deactivate_category_buttons_and_save(button63_addr, 63);  // provide starting and ending buttons as arguments
+				}
+				else if((63 > category_size_6) && (63 <= category_size_7) && (no_of_votes_cat7 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("63C7 ");				// comment this out in final product
+					vote_indicator_63 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat7--;
+					//i2c_send_byte(PIC_DEV_ADDR, 63);
+					deactivate_category_buttons_and_save(button63_addr, 63);  // provide starting and ending buttons as arguments
+				}
+				//else if((63 > category_size_7) && (63 <= category_size_8) && (no_of_votes_cat8 != 0x00))				// Mask out the MSB nibble.
+				//{
+					////USART_putstring("63C8 ");				// comment this out in final product
+					//vote_indicator_63 = 1;					// Indicating button 1 was pressed
+					//no_of_votes_cat8--;
+					////i2c_send_byte(PIC_DEV_ADDR, 63);
+					//deactivate_category_buttons_and_save(button63_addr, 63);  // provide starting and ending buttons as arguments
+				//}
+				else if ((63 > no_of_buttons_in_categories) && (gen_vote_count != 0))
+				{
+					//USART_putstring("63G ");		// comment this out in final product
+					vote_indicator_63 = 1;			// Indicating button 1 was pressed
+					deactivate_category_buttons_and_save(button63_addr, 63);
+					//i2c_send_byte(PIC_DEV_ADDR, 63);
+					gen_vote_count--;
+				}
 			}
-			else if((35 > category_size_3) && (35 <= category_size_4) && (no_of_votes_cat4 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("35C4 ");				// comment this out in final product
-				vote_indicator_35 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat4--;
-				//i2c_send_byte(PIC_DEV_ADDR, 35);
-				deactivate_category_buttons_and_save(button35_addr, 35);  // provide starting and ending buttons as arguments
-			}
-			else if((35 > category_size_4) && (35 <= category_size_5) && (no_of_votes_cat5 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("35C5 ");				// comment this out in final product
-				vote_indicator_35 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat5--;
-				//i2c_send_byte(PIC_DEV_ADDR, 35);
-				deactivate_category_buttons_and_save(button35_addr, 35);  // provide starting and ending buttons as arguments
-			}
-			else if((35 > category_size_5) && (35 <= category_size_6) && (no_of_votes_cat6 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("35C6 ");				// comment this out in final product
-				vote_indicator_35 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat6--;
-				//i2c_send_byte(PIC_DEV_ADDR, 35);
-				deactivate_category_buttons_and_save(button35_addr, 35);  // provide starting and ending buttons as arguments
-			}
-			else if((35 > category_size_6) && (35 <= category_size_7) && (no_of_votes_cat7 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("35C7 ");				// comment this out in final product
-				vote_indicator_35 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat7--;
-				//i2c_send_byte(PIC_DEV_ADDR, 35);
-				deactivate_category_buttons_and_save(button35_addr, 35);  // provide starting and ending buttons as arguments
-			}
-			//else if((35 > category_size_7) && (35 <= category_size_8) && (no_of_votes_cat8 != 0x00))				// Mask out the MSB nibble.
-			//{
-				////USART_putstring("35C8 ");				// comment this out in final product
-				//vote_indicator_35 = 1;					// Indicating button 1 was pressed
-				//no_of_votes_cat8--;
-				////i2c_send_byte(PIC_DEV_ADDR, 35);
-				//deactivate_category_buttons_and_save(button35_addr, 35);  // provide starting and ending buttons as arguments
-			//}
-			else if ((35 > no_of_buttons_in_categories) && (gen_vote_count != 0))
-			{
-				//USART_putstring("35G ");		// comment this out in final product
-				vote_indicator_35 = 1;			// Indicating button 1 was pressed
-				deactivate_category_buttons_and_save(button35_addr, 35);
-				//i2c_send_byte(PIC_DEV_ADDR, 35);
-				gen_vote_count--;
-			}
-		}
 		
-		if ((matrix_A_data == 0) && (matrix_B_data == 0) && (matrix_C_data == 1) && (matrix_D_data == 0) && ((PINB & 0x0F) == 0x03)  && (36 <= candidate_count) && vote_indicator_36 == 0)
-		{
-			if((36 > category_size_2) && (36 <= category_size_3) && (no_of_votes_cat3 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("36C3 ");				// comment this out in final product
-				vote_indicator_36 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat3--;
-				//i2c_send_byte(PIC_DEV_ADDR, 36);
-				deactivate_category_buttons_and_save(button36_addr, 36);  // provide starting and ending buttons as arguments
-			}
-			else if((36 > category_size_3) && (36 <= category_size_4) && (no_of_votes_cat4 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("36C4 ");				// comment this out in final product
-				vote_indicator_36 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat4--;
-				//i2c_send_byte(PIC_DEV_ADDR, 36);
-				deactivate_category_buttons_and_save(button36_addr, 36);  // provide starting and ending buttons as arguments
-			}
-			else if((36 > category_size_4) && (36 <= category_size_5) && (no_of_votes_cat5 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("36C5 ");				// comment this out in final product
-				vote_indicator_36 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat5--;
-				//i2c_send_byte(PIC_DEV_ADDR, 36);
-				deactivate_category_buttons_and_save(button36_addr, 36);  // provide starting and ending buttons as arguments
-			}
-			else if((36 > category_size_5) && (36 <= category_size_6) && (no_of_votes_cat6 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("36C6 ");				// comment this out in final product
-				vote_indicator_36 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat6--;
-				//i2c_send_byte(PIC_DEV_ADDR, 36);
-				deactivate_category_buttons_and_save(button36_addr, 36);  // provide starting and ending buttons as arguments
-			}
-			else if((36 > category_size_6) && (36 <= category_size_7) && (no_of_votes_cat7 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("36C7 ");				// comment this out in final product
-				vote_indicator_36 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat7--;
-				//i2c_send_byte(PIC_DEV_ADDR, 36);
-				deactivate_category_buttons_and_save(button36_addr, 36);  // provide starting and ending buttons as arguments
-			}
-			//else if((36 > category_size_7) && (36 <= category_size_8) && (no_of_votes_cat8 != 0x00))				// Mask out the MSB nibble.
-			//{
-				////USART_putstring("36C8 ");				// comment this out in final product
-				//vote_indicator_36 = 1;					// Indicating button 1 was pressed
-				//no_of_votes_cat8--;
-				////i2c_send_byte(PIC_DEV_ADDR, 36);
-				//deactivate_category_buttons_and_save(button36_addr, 36);  // provide starting and ending buttons as arguments
-			//}
-			else if ((36 > no_of_buttons_in_categories) && (gen_vote_count != 0))
-			{
-				//USART_putstring("36G ");		// comment this out in final product
-				vote_indicator_36 = 1;			// Indicating button 1 was pressed
-				deactivate_category_buttons_and_save(button36_addr, 36);
-				//i2c_send_byte(PIC_DEV_ADDR, 36);
-				gen_vote_count--;
-			}
-		}
-		
-		if ((matrix_A_data == 0) && (matrix_B_data == 0) && (matrix_C_data == 1) && (matrix_D_data == 0) && ((PINB & 0x0F) == 0x04)  && (37 <= candidate_count) && vote_indicator_37 == 0)
-		{
-			if((37 > category_size_2) && (37 <= category_size_3) && (no_of_votes_cat3 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("37C3 ");				// comment this out in final product
-				vote_indicator_37 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat3--;
-				//i2c_send_byte(PIC_DEV_ADDR, 37);
-				deactivate_category_buttons_and_save(button37_addr, 37);  // provide starting and ending buttons as arguments
-			}
-			else if((37 > category_size_3) && (37 <= category_size_4) && (no_of_votes_cat4 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("37C4 ");				// comment this out in final product
-				vote_indicator_37 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat4--;
-				//i2c_send_byte(PIC_DEV_ADDR, 37);
-				deactivate_category_buttons_and_save(button37_addr, 37);  // provide starting and ending buttons as arguments
-			}
-			else if((37 > category_size_4) && (37 <= category_size_5) && (no_of_votes_cat5 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("37C5 ");				// comment this out in final product
-				vote_indicator_37 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat5--;
-				//i2c_send_byte(PIC_DEV_ADDR, 37);
-				deactivate_category_buttons_and_save(button37_addr, 37);  // provide starting and ending buttons as arguments
-			}
-			else if((37 > category_size_5) && (37 <= category_size_6) && (no_of_votes_cat6 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("37C6 ");				// comment this out in final product
-				vote_indicator_37 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat6--;
-				//i2c_send_byte(PIC_DEV_ADDR, 37);
-				deactivate_category_buttons_and_save(button37_addr, 37);  // provide starting and ending buttons as arguments
-			}
-			else if((37 > category_size_6) && (37 <= category_size_7) && (no_of_votes_cat7 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("37C7 ");				// comment this out in final product
-				vote_indicator_37 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat7--;
-				//i2c_send_byte(PIC_DEV_ADDR, 37);
-				deactivate_category_buttons_and_save(button37_addr, 37);  // provide starting and ending buttons as arguments
-			}
-			//else if((37 > category_size_7) && (37 <= category_size_8) && (no_of_votes_cat8 != 0x00))				// Mask out the MSB nibble.
-			//{
-				////USART_putstring("37C8 ");				// comment this out in final product
-				//vote_indicator_37 = 1;					// Indicating button 1 was pressed
-				//no_of_votes_cat8--;
-				////i2c_send_byte(PIC_DEV_ADDR, 37);
-				//deactivate_category_buttons_and_save(button37_addr, 37);  // provide starting and ending buttons as arguments
-			//}
-			else if ((37 > no_of_buttons_in_categories) && (gen_vote_count != 0))
-			{
-				//USART_putstring("37G ");		// comment this out in final product
-				vote_indicator_37 = 1;			// Indicating button 1 was pressed
-				deactivate_category_buttons_and_save(button37_addr, 37);
-				//i2c_send_byte(PIC_DEV_ADDR, 37);
-				gen_vote_count--;
-			}
-			
-		}
-		
-		if ((matrix_A_data == 0) && (matrix_B_data == 0) && (matrix_C_data == 1) && (matrix_D_data == 0) && ((PINB & 0x0F) == 0x05)  && (38 <= candidate_count) && vote_indicator_38 == 0)
-		{
-			if((38 > category_size_2) && (38 <= category_size_3) && (no_of_votes_cat3 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("38C3 ");				// comment this out in final product
-				vote_indicator_38 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat3--;
-				//i2c_send_byte(PIC_DEV_ADDR, 38);
-				deactivate_category_buttons_and_save(button38_addr, 38);  // provide starting and ending buttons as arguments
-			}
-			else if((38 > category_size_3) && (38 <= category_size_4) && (no_of_votes_cat4 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("38C4 ");				// comment this out in final product
-				vote_indicator_38 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat4--;
-				//i2c_send_byte(PIC_DEV_ADDR, 38);
-				deactivate_category_buttons_and_save(button38_addr, 38);  // provide starting and ending buttons as arguments
-			}
-			else if((38 > category_size_4) && (38 <= category_size_5) && (no_of_votes_cat5 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("38C5 ");				// comment this out in final product
-				vote_indicator_38 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat5--;
-				//i2c_send_byte(PIC_DEV_ADDR, 38);
-				deactivate_category_buttons_and_save(button38_addr, 38);  // provide starting and ending buttons as arguments
-			}
-			else if((38 > category_size_5) && (38 <= category_size_6) && (no_of_votes_cat6 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("38C6 ");				// comment this out in final product
-				vote_indicator_38 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat6--;
-				//i2c_send_byte(PIC_DEV_ADDR, 38);
-				deactivate_category_buttons_and_save(button38_addr, 38);  // provide starting and ending buttons as arguments
-			}
-			else if((38 > category_size_6) && (38 <= category_size_7) && (no_of_votes_cat7 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("38C7 ");				// comment this out in final product
-				vote_indicator_38 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat7--;
-				//i2c_send_byte(PIC_DEV_ADDR, 38);
-				deactivate_category_buttons_and_save(button38_addr, 38);  // provide starting and ending buttons as arguments
-			}
-			//else if((38 > category_size_7) && (38 <= category_size_8) && (no_of_votes_cat8 != 0x00))				// Mask out the MSB nibble.
-			//{
-				////USART_putstring("38C8 ");				// comment this out in final product
-				//vote_indicator_38 = 1;					// Indicating button 1 was pressed
-				//no_of_votes_cat8--;
-				////i2c_send_byte(PIC_DEV_ADDR, 38);
-				//deactivate_category_buttons_and_save(button38_addr, 38);  // provide starting and ending buttons as arguments
-			//}
-			else if ((38 > no_of_buttons_in_categories) && (gen_vote_count != 0))
-			{
-				//USART_putstring("38G ");		// comment this out in final product
-				vote_indicator_38 = 1;			// Indicating button 1 was pressed
-				deactivate_category_buttons_and_save(button38_addr, 38);
-				//i2c_send_byte(PIC_DEV_ADDR, 38);
-				gen_vote_count--;
-			}
-		}
-		
-		if ((matrix_A_data == 0) && (matrix_B_data == 0) && (matrix_C_data == 1) && (matrix_D_data == 0) && ((PINB & 0x0F) == 0x06)  && (39 <= candidate_count) && vote_indicator_39 == 0)
-		{
-			if((39 > category_size_2) && (39 <= category_size_3) && (no_of_votes_cat3 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("39C3 ");				// comment this out in final product
-				vote_indicator_39 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat3--;
-				//i2c_send_byte(PIC_DEV_ADDR, 39);
-				deactivate_category_buttons_and_save(button39_addr, 39);  // provide starting and ending buttons as arguments
-			}
-			else if((39 > category_size_3) && (39 <= category_size_4) && (no_of_votes_cat4 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("39C4 ");				// comment this out in final product
-				vote_indicator_39 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat4--;
-				//i2c_send_byte(PIC_DEV_ADDR, 39);
-				deactivate_category_buttons_and_save(button39_addr, 39);  // provide starting and ending buttons as arguments
-			}
-			else if((39 > category_size_4) && (39 <= category_size_5) && (no_of_votes_cat5 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("39C5 ");				// comment this out in final product
-				vote_indicator_39 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat5--;
-				//i2c_send_byte(PIC_DEV_ADDR, 39);
-				deactivate_category_buttons_and_save(button39_addr, 39);  // provide starting and ending buttons as arguments
-			}
-			else if((39 > category_size_5) && (39 <= category_size_6) && (no_of_votes_cat6 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("39C6 ");				// comment this out in final product
-				vote_indicator_39 = 1;                  	// Indicating button 1 was pressed
-				no_of_votes_cat6--;
-				//i2c_send_byte(PIC_DEV_ADDR, 39);
-				deactivate_category_buttons_and_save(button39_addr, 39);  // provide starting and ending buttons as arguments
-			}
-			else if((39 > category_size_6) && (39 <= category_size_7) && (no_of_votes_cat7 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("39C7 ");				// comment this out in final product
-				vote_indicator_39 = 1;                  	// Indicating button 1 was pressed
-				no_of_votes_cat7--;
-				//i2c_send_byte(PIC_DEV_ADDR, 39);
-				deactivate_category_buttons_and_save(button39_addr, 39);  // provide starting and ending buttons as arguments
-			}
-			//else if((39 > category_size_7) && (39 <= category_size_8) && (no_of_votes_cat8 != 0x00))				// Mask out the MSB nibble.
-			//{
-				////USART_putstring("39C8 ");				// comment this out in final product
-				//vote_indicator_39 = 1;                  	// Indicating button 1 was pressed
-				//no_of_votes_cat8--;
-				////i2c_send_byte(PIC_DEV_ADDR, 39);
-				//deactivate_category_buttons_and_save(button39_addr, 39);  // provide starting and ending buttons as arguments
-			//}
-			else if ((39 > no_of_buttons_in_categories) && (gen_vote_count != 0))
-			{
-				//USART_putstring("39G ");		// comment this out in final product
-				vote_indicator_39 = 1;			// Indicating button 1 was pressed
-				deactivate_category_buttons_and_save(button39_addr, 39);
-				//i2c_send_byte(PIC_DEV_ADDR, 39);
-				gen_vote_count--;
-			}
-		}
-		
-		if ((matrix_A_data == 0) && (matrix_B_data == 0) && (matrix_C_data == 1) && (matrix_D_data == 0) && ((PINB & 0x0F) == 0x07)  && (40 <= candidate_count) && vote_indicator_40 == 0)
-		{
-			if((40 > category_size_2) && (40 <= category_size_3) && (no_of_votes_cat3 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("40C3 ");				// comment this out in final product
-				vote_indicator_40 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat3--;
-				//i2c_send_byte(PIC_DEV_ADDR, 40);
-				deactivate_category_buttons_and_save(button40_addr, 40);  // provide starting and ending buttons as arguments
-			}
-			else if((40 > category_size_3) && (40 <= category_size_4) && (no_of_votes_cat4 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("40C4 ");				// comment this out in final product
-				vote_indicator_40 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat4--;
-				//i2c_send_byte(PIC_DEV_ADDR, 40);
-				deactivate_category_buttons_and_save(button40_addr, 40);  // provide starting and ending buttons as arguments
-			}
-			else if((40 > category_size_4) && (40 <= category_size_5) && (no_of_votes_cat5 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("40C5 ");				// comment this out in final product
-				vote_indicator_40 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat5--;
-				//i2c_send_byte(PIC_DEV_ADDR, 40);
-				deactivate_category_buttons_and_save(button40_addr, 40);  // provide starting and ending buttons as arguments
-			}
-			else if((40 > category_size_5) && (40 <= category_size_6) && (no_of_votes_cat6 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("40C6 ");				// comment this out in final product
-				vote_indicator_40 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat6--;
-				//i2c_send_byte(PIC_DEV_ADDR, 40);
-				deactivate_category_buttons_and_save(button40_addr, 40);  // provide starting and ending buttons as arguments
-			}
-			else if((40 > category_size_6) && (40 <= category_size_7) && (no_of_votes_cat7 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("40C7 ");				// comment this out in final product
-				vote_indicator_40 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat7--;
-				//i2c_send_byte(PIC_DEV_ADDR, 40);
-				deactivate_category_buttons_and_save(button40_addr, 40);  // provide starting and ending buttons as arguments
-			}
-			//else if((40 > category_size_7) && (40 <= category_size_8) && (no_of_votes_cat8 != 0x00))				// Mask out the MSB nibble.
-			//{
-				////USART_putstring("40C8 ");				// comment this out in final product
-				//vote_indicator_40 = 1;					// Indicating button 1 was pressed
-				//no_of_votes_cat8--;
-				////i2c_send_byte(PIC_DEV_ADDR, 40);
-				//deactivate_category_buttons_and_save(button40_addr, 40);  // provide starting and ending buttons as arguments
-			//}
-			else if ((40 > no_of_buttons_in_categories) && (gen_vote_count != 0))
-			{
-				//USART_putstring("40G ");		// comment this out in final product
-				vote_indicator_40 = 1;			// Indicating button 1 was pressed
-				deactivate_category_buttons_and_save(button40_addr, 40);
-				//i2c_send_byte(PIC_DEV_ADDR, 40);
-				gen_vote_count--;
-			}
-		}
-		
-		if ((matrix_A_data == 0) && (matrix_B_data == 0) && (matrix_C_data == 1) && (matrix_D_data == 0) && ((PINB & 0x0F) == 0x08)  && (41 <= candidate_count) && vote_indicator_41 == 0)
-		{
-			if((41 > category_size_2) && (41 <= category_size_3) && (no_of_votes_cat3 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("41C3 ");				// comment this out in final product
-				vote_indicator_41 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat3--;
-				//i2c_send_byte(PIC_DEV_ADDR, 41);
-				deactivate_category_buttons_and_save(button41_addr, 41);  // provide starting and ending buttons as arguments
-			}
-			else if((41 > category_size_3) && (41 <= category_size_4) && (no_of_votes_cat4 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("41C4 ");				// comment this out in final product
-				vote_indicator_41 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat4--;
-				//i2c_send_byte(PIC_DEV_ADDR, 41);
-				deactivate_category_buttons_and_save(button41_addr, 41);  // provide starting and ending buttons as arguments
-			}
-			else if((41 > category_size_4) && (41 <= category_size_5) && (no_of_votes_cat5 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("41C5 ");				// comment this out in final product
-				vote_indicator_41 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat5--;
-				//i2c_send_byte(PIC_DEV_ADDR, 41);
-				deactivate_category_buttons_and_save(button41_addr, 41);  // provide starting and ending buttons as arguments
-			}
-			else if((41 > category_size_5) && (41 <= category_size_6) && (no_of_votes_cat6 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("41C6 ");				// comment this out in final product
-				vote_indicator_41 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat6--;
-				//i2c_send_byte(PIC_DEV_ADDR, 41);
-				deactivate_category_buttons_and_save(button41_addr, 41);  // provide starting and ending buttons as arguments
-			}
-			else if((41 > category_size_6) && (41 <= category_size_7) && (no_of_votes_cat7 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("41C7 ");				// comment this out in final product
-				vote_indicator_41 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat7--;
-				//i2c_send_byte(PIC_DEV_ADDR, 41);
-				deactivate_category_buttons_and_save(button41_addr, 41);  // provide starting and ending buttons as arguments
-			}
-			//else if((41 > category_size_7) && (41 <= category_size_8) && (no_of_votes_cat8 != 0x00))				// Mask out the MSB nibble.
-			//{
-				////USART_putstring("41C8 ");				// comment this out in final product
-				//vote_indicator_41 = 1;					// Indicating button 1 was pressed
-				//no_of_votes_cat8--;
-				////i2c_send_byte(PIC_DEV_ADDR, 41);
-				//deactivate_category_buttons_and_save(button41_addr, 41);  // provide starting and ending buttons as arguments
-			//}
-			else if ((41 > no_of_buttons_in_categories) && (gen_vote_count != 0))
-			{
-				//USART_putstring("41G ");		// comment this out in final product
-				vote_indicator_41 = 1;			// Indicating button 1 was pressed
-				deactivate_category_buttons_and_save(button41_addr, 41);
-				//i2c_send_byte(PIC_DEV_ADDR, 41);
-				gen_vote_count--;
-			}
-		}
-		
-		if ((matrix_A_data == 0) && (matrix_B_data == 0) && (matrix_C_data == 1) && (matrix_D_data == 0) && ((PINB & 0x0F) == 0x09)  && (42 <= candidate_count) && vote_indicator_42 == 0)
-		{
-			if((42 > category_size_2) && (42 <= category_size_3) && (no_of_votes_cat3 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("42C3 ");				// comment this out in final product
-				vote_indicator_42 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat3--;
-				//i2c_send_byte(PIC_DEV_ADDR, 42);
-				deactivate_category_buttons_and_save(button42_addr, 42);  // provide starting and ending buttons as arguments
-			}
-			else if((42 > category_size_3) && (42 <= category_size_4) && (no_of_votes_cat4 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("42C4 ");				// comment this out in final product
-				vote_indicator_42 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat4--;
-				//i2c_send_byte(PIC_DEV_ADDR, 42);
-				deactivate_category_buttons_and_save(button42_addr, 42);  // provide starting and ending buttons as arguments
-			}
-			else if((42 > category_size_4) && (42 <= category_size_5) && (no_of_votes_cat5 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("42C5 ");				// comment this out in final product
-				vote_indicator_42 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat5--;
-				//i2c_send_byte(PIC_DEV_ADDR, 42);
-				deactivate_category_buttons_and_save(button42_addr, 42);  // provide starting and ending buttons as arguments
-			}
-			else if((42 > category_size_5) && (42 <= category_size_6) && (no_of_votes_cat6 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("42C6 ");				// comment this out in final product
-				vote_indicator_42 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat6--;
-				//i2c_send_byte(PIC_DEV_ADDR, 42);
-				deactivate_category_buttons_and_save(button42_addr, 42);  // provide starting and ending buttons as arguments
-			}
-			else if((42 > category_size_6) && (42 <= category_size_7) && (no_of_votes_cat7 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("42C7 ");				// comment this out in final product
-				vote_indicator_42 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat7--;
-				//i2c_send_byte(PIC_DEV_ADDR, 42);
-				deactivate_category_buttons_and_save(button42_addr, 42);  // provide starting and ending buttons as arguments
-			}
-			//else if((42 > category_size_7) && (42 <= category_size_8) && (no_of_votes_cat8 != 0x00))				// Mask out the MSB nibble.
-			//{
-				////USART_putstring("42C8 ");				// comment this out in final product
-				//vote_indicator_42 = 1;					// Indicating button 1 was pressed
-				//no_of_votes_cat8--;
-				////i2c_send_byte(PIC_DEV_ADDR, 42);
-				//deactivate_category_buttons_and_save(button42_addr, 42);  // provide starting and ending buttons as arguments
-			//}
-			else if ((42 > no_of_buttons_in_categories) && (gen_vote_count != 0))
-			{
-				//USART_putstring("42G ");		// comment this out in final product
-				vote_indicator_42 = 1;			// Indicating button 1 was pressed
-				deactivate_category_buttons_and_save(button42_addr, 42);
-				//i2c_send_byte(PIC_DEV_ADDR, 42);
-				gen_vote_count--;
-			}
-		}
-		
-		if ((matrix_A_data == 0) && (matrix_B_data == 0) && (matrix_C_data == 1) && (matrix_D_data == 0) && ((PINB & 0x0F) == 0x0A)  && (43 <= candidate_count) && vote_indicator_43 == 0)
-		{
-			if((43 > category_size_2) && (43 <= category_size_3) && (no_of_votes_cat3 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("43C3 ");				// comment this out in final product
-				vote_indicator_43 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat3--;
-				//i2c_send_byte(PIC_DEV_ADDR, 43);
-				deactivate_category_buttons_and_save(button43_addr, 43);  // provide starting and ending buttons as arguments
-			}
-			else if((43 > category_size_3) && (43 <= category_size_4) && (no_of_votes_cat4 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("43C4 ");				// comment this out in final product
-				vote_indicator_43 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat4--;
-				//i2c_send_byte(PIC_DEV_ADDR, 43);
-				deactivate_category_buttons_and_save(button43_addr, 43);  // provide starting and ending buttons as arguments
-			}
-			else if((43 > category_size_4) && (43 <= category_size_5) && (no_of_votes_cat5 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("43C5 ");				// comment this out in final product
-				vote_indicator_43 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat5--;
-				//i2c_send_byte(PIC_DEV_ADDR, 43);
-				deactivate_category_buttons_and_save(button43_addr, 43);  // provide starting and ending buttons as arguments
-			}
-			else if((43 > category_size_5) && (43 <= category_size_6) && (no_of_votes_cat6 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("43C6 ");				// comment this out in final product
-				vote_indicator_43 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat6--;
-				//i2c_send_byte(PIC_DEV_ADDR, 43);
-				deactivate_category_buttons_and_save(button43_addr, 43);  // provide starting and ending buttons as arguments
-			}
-			else if((43 > category_size_6) && (43 <= category_size_7) && (no_of_votes_cat7 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("43C7 ");				// comment this out in final product
-				vote_indicator_43 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat7--;
-				//i2c_send_byte(PIC_DEV_ADDR, 43);
-				deactivate_category_buttons_and_save(button43_addr, 43);  // provide starting and ending buttons as arguments
-			}
-			//else if((43 > category_size_7) && (43 <= category_size_8) && (no_of_votes_cat8 != 0x00))				// Mask out the MSB nibble.
-			//{
-				////USART_putstring("43C8 ");				// comment this out in final product
-				//vote_indicator_43 = 1;					// Indicating button 1 was pressed
-				//no_of_votes_cat8--;
-				////i2c_send_byte(PIC_DEV_ADDR, 43);
-				//deactivate_category_buttons_and_save(button43_addr, 43);  // provide starting and ending buttons as arguments
-			//}
-			else if ((43 > no_of_buttons_in_categories) && (gen_vote_count != 0))
-			{
-				//USART_putstring("43G ");		// comment this out in final product
-				vote_indicator_43 = 1;			// Indicating button 1 was pressed
-				deactivate_category_buttons_and_save(button43_addr, 43);
-				//i2c_send_byte(PIC_DEV_ADDR, 43);
-				gen_vote_count--;
-			}
-		}
-		
-		if ((matrix_A_data == 0) && (matrix_B_data == 0) && (matrix_C_data == 1) && (matrix_D_data == 0) && ((PINB & 0x0F) == 0x0B)  && (44 <= candidate_count) && vote_indicator_44 == 0)
-		{
-			if((44 > category_size_2) && (44 <= category_size_3) && (no_of_votes_cat3 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("44C3 ");				// comment this out in final product
-				vote_indicator_44 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat3--;
-				//i2c_send_byte(PIC_DEV_ADDR, 44);
-				deactivate_category_buttons_and_save(button44_addr, 44);  // provide starting and ending buttons as arguments
-			}
-			else if((44 > category_size_3) && (44 <= category_size_4) && (no_of_votes_cat4 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("44C4 ");				// comment this out in final product
-				vote_indicator_44 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat4--;
-				//i2c_send_byte(PIC_DEV_ADDR, 44);
-				deactivate_category_buttons_and_save(button44_addr, 44);  // provide starting and ending buttons as arguments
-			}
-			else if((44 > category_size_4) && (44 <= category_size_5) && (no_of_votes_cat5 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("44C5 ");				// comment this out in final product
-				vote_indicator_44 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat5--;
-				//i2c_send_byte(PIC_DEV_ADDR, 44);
-				deactivate_category_buttons_and_save(button44_addr, 44);  // provide starting and ending buttons as arguments
-			}
-			else if((44 > category_size_5) && (44 <= category_size_6) && (no_of_votes_cat6 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("44C6 ");				// comment this out in final product
-				vote_indicator_44 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat6--;
-				//i2c_send_byte(PIC_DEV_ADDR, 44);
-				deactivate_category_buttons_and_save(button44_addr, 44);  // provide starting and ending buttons as arguments
-			}
-			else if((44 > category_size_6) && (44 <= category_size_7) && (no_of_votes_cat7 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("44C7 ");				// comment this out in final product
-				vote_indicator_44 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat7--;
-				//i2c_send_byte(PIC_DEV_ADDR, 44);
-				deactivate_category_buttons_and_save(button44_addr, 44);  // provide starting and ending buttons as arguments
-			}
-			//else if((44 > category_size_7) && (44 <= category_size_8) && (no_of_votes_cat8 != 0x00))				// Mask out the MSB nibble.
-			//{
-				////USART_putstring("44C8 ");				// comment this out in final product
-				//vote_indicator_44 = 1;					// Indicating button 1 was pressed
-				//no_of_votes_cat8--;
-				////i2c_send_byte(PIC_DEV_ADDR, 44);
-				//deactivate_category_buttons_and_save(button44_addr, 44);  // provide starting and ending buttons as arguments
-			//}
-			else if ((44 > no_of_buttons_in_categories) && (gen_vote_count != 0))
-			{
-				//USART_putstring("44G ");		// comment this out in final product
-				vote_indicator_44 = 1;			// Indicating button 1 was pressed
-				deactivate_category_buttons_and_save(button44_addr, 44);
-				//i2c_send_byte(PIC_DEV_ADDR, 44);
-				gen_vote_count--;
-			}
-		}
-		
-		if ((matrix_A_data == 0) && (matrix_B_data == 0) && (matrix_C_data == 1) && (matrix_D_data == 0) && ((PINB & 0x0F) == 0x0C)  && (45 <= candidate_count) && vote_indicator_45 == 0)
-		{
-			if((45 > category_size_2) && (45 <= category_size_3) && (no_of_votes_cat3 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("45C3 ");				// comment this out in final product
-				vote_indicator_45 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat3--;
-				//i2c_send_byte(PIC_DEV_ADDR, 45);
-				deactivate_category_buttons_and_save(button45_addr, 45);  // provide starting and ending buttons as arguments
-			}
-			else if((45 > category_size_3) && (45 <= category_size_4) && (no_of_votes_cat4 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("45C4 ");				// comment this out in final product
-				vote_indicator_45 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat4--;
-				//i2c_send_byte(PIC_DEV_ADDR, 45);
-				deactivate_category_buttons_and_save(button45_addr, 45);  // provide starting and ending buttons as arguments
-			}
-			else if((45 > category_size_4) && (45 <= category_size_5) && (no_of_votes_cat5 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("45C5 ");				// comment this out in final product
-				vote_indicator_45 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat5--;
-				//i2c_send_byte(PIC_DEV_ADDR, 45);
-				deactivate_category_buttons_and_save(button45_addr, 45);  // provide starting and ending buttons as arguments
-			}
-			else if((45 > category_size_5) && (45 <= category_size_6) && (no_of_votes_cat6 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("45C6 ");				// comment this out in final pro6uct
-				vote_indicator_45 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat6--;
-				//i2c_send_byte(PIC_DEV_ADDR, 45);
-				deactivate_category_buttons_and_save(button45_addr, 45);  // provide starting and ending buttons as arguments
-			}
-			else if((45 > category_size_6) && (45 <= category_size_7) && (no_of_votes_cat7 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("45C7 ");				// comment this out in final pro6uct
-				vote_indicator_45 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat7--;
-				//i2c_send_byte(PIC_DEV_ADDR, 45);
-				deactivate_category_buttons_and_save(button45_addr, 45);  // provide starting and ending buttons as arguments
-			}
-			//else if((45 > category_size_7) && (45 <= category_size_8) && (no_of_votes_cat8 != 0x00))				// Mask out the MSB nibble.
-			//{
-				////USART_putstring("45C8 ");				// comment this out in final pro6uct
-				//vote_indicator_45 = 1;					// Indicating button 1 was pressed
-				//no_of_votes_cat8--;
-				////i2c_send_byte(PIC_DEV_ADDR, 45);
-				//deactivate_category_buttons_and_save(button45_addr, 45);  // provide starting and ending buttons as arguments
-			//}
-			else if ((45 > no_of_buttons_in_categories) && (gen_vote_count != 0))
-			{
-				//USART_putstring("45G ");		// comment this out in final product
-				vote_indicator_45 = 1;			// Indicating button 1 was pressed
-				deactivate_category_buttons_and_save(button45_addr, 45);
-				//i2c_send_byte(PIC_DEV_ADDR, 45);
-				gen_vote_count--;
-			}
-		}
-		
-		if ((matrix_A_data == 0) && (matrix_B_data == 0) && (matrix_C_data == 1) && (matrix_D_data == 0) && ((PINB & 0x0F) == 0x0D) && (46 <= candidate_count) && vote_indicator_46 == 0)
-		{
-			//if((46 > category_size_2) && (46 <= category_size_3) && (no_of_votes_cat3 != 0x00))				// Mask out the MSB nibble.
-			//{
-				////USART_putstring("46 C 3");				// comment this out in final product
-				//vote_indicator_46 = 1;					// Indicating button 1 was pressed
-				//no_of_votes_cat3--;
-				////i2c_send_byte(PIC_DEV_ADDR, 46);
-				//deactivate_category_buttons_and_save(button46_addr, 46);  // provide starting and ending buttons as arguments
-			//}
-			if((46 > category_size_3) && (46 <= category_size_4) && (no_of_votes_cat4 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("46C4 ");				// comment this out in final product
-				vote_indicator_46 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat4--;
-				//i2c_send_byte(PIC_DEV_ADDR, 46);
-				deactivate_category_buttons_and_save(button46_addr, 46);  // provide starting and ending buttons as arguments
-			}
-			else if((46 > category_size_4) && (46 <= category_size_5) && (no_of_votes_cat5 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("46C5 ");				// comment this out in final product
-				vote_indicator_46 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat5--;
-				//i2c_send_byte(PIC_DEV_ADDR, 46);
-				deactivate_category_buttons_and_save(button46_addr, 46);  // provide starting and ending buttons as arguments
-			}
-			else if((46 > category_size_5) && (46 <= category_size_6) && (no_of_votes_cat6 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("46C6 ");				// comment this out in final product
-				vote_indicator_46 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat6--;
-				//i2c_send_byte(PIC_DEV_ADDR, 46);
-				deactivate_category_buttons_and_save(button46_addr, 46);  // provide starting and ending buttons as arguments
-			}
-			else if((46 > category_size_6) && (46 <= category_size_7) && (no_of_votes_cat7 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("46C7 ");				// comment this out in final product
-				vote_indicator_46 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat7--;
-				//i2c_send_byte(PIC_DEV_ADDR, 46);
-				deactivate_category_buttons_and_save(button46_addr, 46);  // provide starting and ending buttons as arguments
-			}
-			//else if((46 > category_size_7) && (46 <= category_size_8) && (no_of_votes_cat8 != 0x00))				// Mask out the MSB nibble.
-			//{
-				////USART_putstring("46C8 ");				// comment this out in final product
-				//vote_indicator_46 = 1;					// Indicating button 1 was pressed
-				//no_of_votes_cat8--;
-				////i2c_send_byte(PIC_DEV_ADDR, 46);
-				//deactivate_category_buttons_and_save(button46_addr, 46);  // provide starting and ending buttons as arguments
-			//}
-			else if ((46 > no_of_buttons_in_categories) && (gen_vote_count != 0))
-			{
-				//USART_putstring("46G ");		// comment this out in final product
-				vote_indicator_46 = 1;			// Indicating button 1 was pressed
-				deactivate_category_buttons_and_save(button46_addr, 46);
-				//i2c_send_byte(PIC_DEV_ADDR, 46);
-				gen_vote_count--;
-			}
-		}
-		
-		if ((matrix_A_data == 0) && (matrix_B_data == 0) && (matrix_C_data == 1) && (matrix_D_data == 0) && ((PINB & 0x0F) == 0x0E) && (47 <= candidate_count) && vote_indicator_47 == 0)
-		{
-			//if((47 > category_size_2) && (47 <= category_size_3) && (no_of_votes_cat3 != 0x00))				// Mask out the MSB nibble.
-			//{
-				////USART_putstring("47 C 3");				// comment this out in final product
-				//vote_indicator_47 = 1;					// Indicating button 1 was pressed
-				//no_of_votes_cat3--;
-				////i2c_send_byte(PIC_DEV_ADDR, 47);
-				//deactivate_category_buttons_and_save(button47_addr, 47);  // provide starting and ending buttons as arguments
-			//}
-			if((47 > category_size_3) && (47 <= category_size_4) && (no_of_votes_cat4 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("47C4 ");				// comment this out in final product
-				vote_indicator_47 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat4--;
-				//i2c_send_byte(PIC_DEV_ADDR, 47);
-				deactivate_category_buttons_and_save(button47_addr, 47);  // provide starting and ending buttons as arguments
-			}
-			else if((47 > category_size_4) && (47 <= category_size_5) && (no_of_votes_cat5 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("47C5 ");				// comment this out in final product
-				vote_indicator_47 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat5--;
-				//i2c_send_byte(PIC_DEV_ADDR, 47);
-				deactivate_category_buttons_and_save(button47_addr, 47);  // provide starting and ending buttons as arguments
-			}
-			else if((47 > category_size_5) && (47 <= category_size_6) && (no_of_votes_cat6 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("47C6 ");				// comment this out in final product
-				vote_indicator_47 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat6--;
-				//i2c_send_byte(PIC_DEV_ADDR, 47);
-				deactivate_category_buttons_and_save(button47_addr, 47);  // provide starting and ending buttons as arguments
-			}
-			else if((47 > category_size_6) && (47 <= category_size_7) && (no_of_votes_cat7 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("47C7 ");				// comment this out in final product
-				vote_indicator_47 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat7--;
-				//i2c_send_byte(PIC_DEV_ADDR, 47);
-				deactivate_category_buttons_and_save(button47_addr, 47);  // provide starting and ending buttons as arguments
-			}
-			//else if((47 > category_size_7) && (47 <= category_size_8) && (no_of_votes_cat8 != 0x00))				// Mask out the MSB nibble.
-			//{
-				////USART_putstring("47C8 ");				// comment this out in final product
-				//vote_indicator_47 = 1;					// Indicating button 1 was pressed
-				//no_of_votes_cat8--;
-				////i2c_send_byte(PIC_DEV_ADDR, 47);
-				//deactivate_category_buttons_and_save(button47_addr, 47);  // provide starting and ending buttons as arguments
-			//}
-			else if ((47 > no_of_buttons_in_categories) && (gen_vote_count != 0))
-			{
-				//USART_putstring("47G ");		// comment this out in final product
-				vote_indicator_47 = 1;			// Indicating button 1 was pressed
-				deactivate_category_buttons_and_save(button47_addr, 47);
-				//i2c_send_byte(PIC_DEV_ADDR, 47);
-				gen_vote_count--;
-			}
-		}
-		
-		if ((matrix_A_data == 0) && (matrix_B_data == 0) && (matrix_C_data == 1) && (matrix_D_data == 0) && ((PINB & 0x0F) == 0x0F) && (48 <= candidate_count) && vote_indicator_48 == 0)
-		{
-			//if((48 > category_size_2) && (48 <= category_size_3) && (no_of_votes_cat3 != 0x00))				// Mask out the MSB nibble.
-			//{
-				////USART_putstring("48 C 3");				// comment this out in final product
-				//vote_indicator_48 = 1;					// Indicating button 1 was pressed
-				//no_of_votes_cat3--;
-				////i2c_send_byte(PIC_DEV_ADDR, 48);
-				//deactivate_category_buttons_and_save(button48_addr, 48);  // provide starting and ending buttons as arguments
-			//}
-			if((48 > category_size_3) && (48 <= category_size_4) && (no_of_votes_cat4 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("48C4 ");				// comment this out in final product
-				vote_indicator_48 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat4--;
-				//i2c_send_byte(PIC_DEV_ADDR, 48);
-				deactivate_category_buttons_and_save(button48_addr, 48);  // provide starting and ending buttons as arguments
-			}
-			else if((48 > category_size_4) && (48 <= category_size_5) && (no_of_votes_cat5 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("48C5 ");				// comment this out in final product
-				vote_indicator_48 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat5--;
-				//i2c_send_byte(PIC_DEV_ADDR, 48);
-				deactivate_category_buttons_and_save(button48_addr, 48);  // provide starting and ending buttons as arguments
-			}
-			else if((48 > category_size_5) && (48 <= category_size_6) && (no_of_votes_cat6 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("48C6 ");				// comment this out in final product
-				vote_indicator_48 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat6--;
-				//i2c_send_byte(PIC_DEV_ADDR, 48);
-				deactivate_category_buttons_and_save(button48_addr, 48);  // provide starting and ending buttons as arguments
-			}
-			else if((48 > category_size_6) && (48 <= category_size_7) && (no_of_votes_cat7 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("48C7 ");				// comment this out in final product
-				vote_indicator_48 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat7--;
-				//i2c_send_byte(PIC_DEV_ADDR, 48);
-				deactivate_category_buttons_and_save(button48_addr, 48);  // provide starting and ending buttons as arguments
-			}
-			//else if((48 > category_size_7) && (48 <= category_size_8) && (no_of_votes_cat8 != 0x00))				// Mask out the MSB nibble.
-			//{
-				////USART_putstring("48C8 ");				// comment this out in final product
-				//vote_indicator_48 = 1;					// Indicating button 1 was pressed
-				//no_of_votes_cat8--;
-				////i2c_send_byte(PIC_DEV_ADDR, 48);
-				//deactivate_category_buttons_and_save(button48_addr, 48);  // provide starting and ending buttons as arguments
-			//}
-			else if ((48 > no_of_buttons_in_categories) && (gen_vote_count != 0))
-			{
-				//USART_putstring("48G ");		// comment this out in final product
-				vote_indicator_48 = 1;			// Indicating button 1 was pressed
-				deactivate_category_buttons_and_save(button48_addr, 48);
-				//i2c_send_byte(PIC_DEV_ADDR, 48);
-				gen_vote_count--;
-			}
-		}
-		
-		if ((matrix_A_data == 0) && (matrix_B_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 1) && ((PINB & 0x0F) == 0x00) && (49 <= candidate_count) && vote_indicator_49 == 0)
-		{
-			//if((49 > category_size_2) && (49 <= category_size_3) && (no_of_votes_cat3 != 0x00))				// Mask out the MSB nibble.
-			//{
-				////USART_putstring("49 C 3");				// comment this out in final product
-				//vote_indicator_49 = 1;					// Indicating button 1 was pressed
-				//no_of_votes_cat3--;
-				////i2c_send_byte(PIC_DEV_ADDR, 49);
-				//deactivate_category_buttons_and_save(button49_addr, 49);  // provide starting and ending buttons as arguments
-			//}
-			if((49 > category_size_3) && (49 <= category_size_4) && (no_of_votes_cat4 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("49C4 ");				// comment this out in final product
-				vote_indicator_49 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat4--;
-				//i2c_send_byte(PIC_DEV_ADDR, 49);
-				deactivate_category_buttons_and_save(button49_addr, 49);  // provide starting and ending buttons as arguments
-			}
-			else if((49 > category_size_4) && (49 <= category_size_5) && (no_of_votes_cat5 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("49C5 ");				// comment this out in final product
-				vote_indicator_49 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat5--;
-				//i2c_send_byte(PIC_DEV_ADDR, 49);
-				deactivate_category_buttons_and_save(button49_addr, 49);  // provide starting and ending buttons as arguments
-			}
-			else if((49 > category_size_5) && (49 <= category_size_6) && (no_of_votes_cat6 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("49C6 ");				// comment this out in final product
-				vote_indicator_49 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat6--;
-				//i2c_send_byte(PIC_DEV_ADDR, 49);
-				deactivate_category_buttons_and_save(button49_addr, 49);  // provide starting and ending buttons as arguments
-			}
-			else if((49 > category_size_6) && (49 <= category_size_7) && (no_of_votes_cat7 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("49C7 ");				// comment this out in final product
-				vote_indicator_49 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat7--;
-				//i2c_send_byte(PIC_DEV_ADDR, 49);
-				deactivate_category_buttons_and_save(button49_addr, 49);  // provide starting and ending buttons as arguments
-			}
-			//else if((49 > category_size_7) && (49 <= category_size_8) && (no_of_votes_cat8 != 0x00))				// Mask out the MSB nibble.
-			//{
-				////USART_putstring("49C8 ");				// comment this out in final product
-				//vote_indicator_49 = 1;					// Indicating button 1 was pressed
-				//no_of_votes_cat8--;
-				////i2c_send_byte(PIC_DEV_ADDR, 49);
-				//deactivate_category_buttons_and_save(button49_addr, 49);  // provide starting and ending buttons as arguments
-			//}
-			else if ((49 > no_of_buttons_in_categories) && (gen_vote_count != 0))
-			{
-				////USART_putstring("49 G ");		// comment this out in final product
-				vote_indicator_49 = 1;			// Indicating button 1 was pressed
-				deactivate_category_buttons_and_save(button49_addr, 49);
-				//i2c_send_byte(PIC_DEV_ADDR, 49);
-				gen_vote_count--;
-			}
-		}
-		if ((matrix_A_data == 0) && (matrix_B_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 1) && ((PINB & 0x0F) == 0x01) && (50 <= candidate_count) && vote_indicator_50 == 0)
-		{
-			//if((50 > category_size_2) && (50 <= category_size_3) && (no_of_votes_cat3 != 0x00))				// Mask out the MSB nibble.
-			//{
-				////USART_putstring("50 C 3");				// comment this out in final product
-				//vote_indicator_50 = 1;					// Indicating button 1 was pressed
-				//no_of_votes_cat3--;
-				////i2c_send_byte(PIC_DEV_ADDR, 50);
-				//deactivate_category_buttons_and_save(button50_addr, 50);  // provide starting and ending buttons as arguments
-			//}
-			if((50 > category_size_3) && (50 <= category_size_4) && (no_of_votes_cat4 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("50C4 ");				// comment this out in final product
-				vote_indicator_50 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat4--;
-				//i2c_send_byte(PIC_DEV_ADDR, 50);
-				deactivate_category_buttons_and_save(button50_addr, 50);  // provide starting and ending buttons as arguments
-			}
-			else if((50 > category_size_4) && (50 <= category_size_5) && (no_of_votes_cat5 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("50C5 ");				// comment this out in final product
-				vote_indicator_50 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat5--;
-				//i2c_send_byte(PIC_DEV_ADDR, 50);
-				deactivate_category_buttons_and_save(button50_addr, 50);  // provide starting and ending buttons as arguments
-			}
-			else if((50 > category_size_5) && (50 <= category_size_6) && (no_of_votes_cat6 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("50C6 ");				// comment this out in final product
-				vote_indicator_50 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat6--;
-				//i2c_send_byte(PIC_DEV_ADDR, 50);
-				deactivate_category_buttons_and_save(button50_addr, 50);  // provide starting and ending buttons as arguments
-			}
-			else if((50 > category_size_6) && (50 <= category_size_7) && (no_of_votes_cat7 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("50C7 ");				// comment this out in final product
-				vote_indicator_50 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat7--;
-				//i2c_send_byte(PIC_DEV_ADDR, 50);
-				deactivate_category_buttons_and_save(button50_addr, 50);  // provide starting and ending buttons as arguments
-			}
-			//else if((50 > category_size_7) && (50 <= category_size_8) && (no_of_votes_cat8 != 0x00))				// Mask out the MSB nibble.
-			//{
-				////USART_putstring("50C8 ");				// comment this out in final product
-				//vote_indicator_50 = 1;					// Indicating button 1 was pressed
-				//no_of_votes_cat8--;
-				////i2c_send_byte(PIC_DEV_ADDR, 50);
-				//deactivate_category_buttons_and_save(button50_addr, 50);  // provide starting and ending buttons as arguments
-			//}
-			else if ((50 > no_of_buttons_in_categories) && (gen_vote_count != 0))
-			{
-				//USART_putstring("50G ");		// comment this out in final product
-				vote_indicator_50 = 1;			// Indicating button 1 was pressed
-				deactivate_category_buttons_and_save(button50_addr, 50);
-				//i2c_send_byte(PIC_DEV_ADDR, 50);
-				gen_vote_count--;
-			}
-		}
-		
-		if ((matrix_A_data == 0) && (matrix_B_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 1) && ((PINB & 0x0F) == 0x02) && (51 <= candidate_count) && vote_indicator_51 == 0)
-		{
-			//if((51 > category_size_2) && (51 <= category_size_3) && (no_of_votes_cat3 != 0x00))				// Mask out the MSB nibble.
-			//{
-				////USART_putstring("51 C 3");				// comment this out in final product
-				//vote_indicator_51 = 1;					// Indicating button 1 was pressed
-				//no_of_votes_cat3--;
-				////i2c_send_byte(PIC_DEV_ADDR, 51);
-				//deactivate_category_buttons_and_save(button51_addr, 51);  // provide starting and ending buttons as arguments
-			//}
-			if((51 > category_size_3) && (51 <= category_size_4) && (no_of_votes_cat4 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("51C4 ");				// comment this out in final product
-				vote_indicator_51 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat4--;
-				//i2c_send_byte(PIC_DEV_ADDR, 51);
-				deactivate_category_buttons_and_save(button51_addr, 51);  // provide starting and ending buttons as arguments
-			}
-			else if((51 > category_size_4) && (51 <= category_size_5) && (no_of_votes_cat5 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("51C5 ");				// comment this out in final product
-				vote_indicator_51 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat5--;
-				//i2c_send_byte(PIC_DEV_ADDR, 51);
-				deactivate_category_buttons_and_save(button51_addr, 51);  // provide starting and ending buttons as arguments
-			}
-			else if((51 > category_size_5) && (51 <= category_size_6) && (no_of_votes_cat6 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("51C6 ");				// comment this out in final product
-				vote_indicator_51 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat6--;
-				//i2c_send_byte(PIC_DEV_ADDR, 51);
-				deactivate_category_buttons_and_save(button51_addr, 51);  // provide starting and ending buttons as arguments
-			}
-			else if((51 > category_size_6) && (51 <= category_size_7) && (no_of_votes_cat7 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("51C7 ");				// comment this out in final product
-				vote_indicator_51 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat7--;
-				//i2c_send_byte(PIC_DEV_ADDR, 51);
-				deactivate_category_buttons_and_save(button51_addr, 51);  // provide starting and ending buttons as arguments
-			}
-			//else if((51 > category_size_7) && (51 <= category_size_8) && (no_of_votes_cat8 != 0x00))				// Mask out the MSB nibble.
-			//{
-				////USART_putstring("51C8 ");				// comment this out in final product
-				//vote_indicator_51 = 1;					// Indicating button 1 was pressed
-				//no_of_votes_cat8--;
-				////i2c_send_byte(PIC_DEV_ADDR, 51);
-				//deactivate_category_buttons_and_save(button51_addr, 51);  // provide starting and ending buttons as arguments
-			//}
-			else if ((51 > no_of_buttons_in_categories) && (gen_vote_count != 0))
-			{
-				//USART_putstring("51G ");		// comment this out in final product
-				vote_indicator_51 = 1;			// Indicating button 1 was pressed
-				deactivate_category_buttons_and_save(button51_addr, 51);
-				//i2c_send_byte(PIC_DEV_ADDR, 51);
-				gen_vote_count--;
-			}
-		}
-		
-		if ((matrix_A_data == 0) && (matrix_B_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 1) && ((PINB & 0x0F) == 0x03) && (52 <= candidate_count) && vote_indicator_52 == 0)
-		{
-			//if((52 > category_size_2) && (52 <= category_size_3) && (no_of_votes_cat3 != 0x00))				// Mask out the MSB nibble.
-			//{
-				////USART_putstring("52 C 3");				// comment this out in final product
-				//vote_indicator_52 = 1;					// Indicating button 1 was pressed
-				//no_of_votes_cat3--;
-				////i2c_send_byte(PIC_DEV_ADDR, 52);
-				//deactivate_category_buttons_and_save(button52_addr, 52);  // provide starting and ending buttons as arguments
-			//}
-			if((52 > category_size_3) && (52 <= category_size_4) && (no_of_votes_cat4 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("52C4 ");				// comment this out in final product
-				vote_indicator_52 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat4--;
-				//i2c_send_byte(PIC_DEV_ADDR, 52);
-				deactivate_category_buttons_and_save(button52_addr, 52);  // provide starting and ending buttons as arguments
-			}
-			else if((52 > category_size_4) && (52 <= category_size_5) && (no_of_votes_cat5 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("52C5 ");				// comment this out in final product
-				vote_indicator_52 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat5--;
-				//i2c_send_byte(PIC_DEV_ADDR, 52);
-				deactivate_category_buttons_and_save(button52_addr, 52);  // provide starting and ending buttons as arguments
-			}
-			else if((52 > category_size_5) && (52 <= category_size_6) && (no_of_votes_cat6 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("52C6 ");				// comment this out in final product
-				vote_indicator_52 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat6--;
-				//i2c_send_byte(PIC_DEV_ADDR, 52);
-				deactivate_category_buttons_and_save(button52_addr, 52);  // provide starting and ending buttons as arguments
-			}
-			else if((52 > category_size_6) && (52 <= category_size_7) && (no_of_votes_cat7 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("52C7 ");				// comment this out in final product
-				vote_indicator_52 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat7--;
-				//i2c_send_byte(PIC_DEV_ADDR, 52);
-				deactivate_category_buttons_and_save(button52_addr, 52);  // provide starting and ending buttons as arguments
-			}
-			//else if((52 > category_size_7) && (52 <= category_size_8) && (no_of_votes_cat8 != 0x00))				// Mask out the MSB nibble.
-			//{
-				////USART_putstring("52C8 ");				// comment this out in final product
-				//vote_indicator_52 = 1;					// Indicating button 1 was pressed
-				//no_of_votes_cat8--;
-				////i2c_send_byte(PIC_DEV_ADDR, 52);
-				//deactivate_category_buttons_and_save(button52_addr, 52);  // provide starting and ending buttons as arguments
-			//}
-			else if ((52 > no_of_buttons_in_categories) && (gen_vote_count != 0))
-			{
-				//USART_putstring("52G ");		// comment this out in final product
-				vote_indicator_52 = 1;			// Indicating button 1 was pressed
-				deactivate_category_buttons_and_save(button52_addr, 52);
-				//i2c_send_byte(PIC_DEV_ADDR, 52);
-				gen_vote_count--;
-			}
-		}
-		
-		if ((matrix_A_data == 0) && (matrix_B_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 1) && ((PINB & 0x0F) == 0x04) && (53 <= candidate_count) && vote_indicator_53 == 0)
-		{
-			//if((53 > category_size_2) && (53 <= category_size_3) && (no_of_votes_cat3 != 0x00))				// Mask out the MSB nibble.
-			//{
-				////USART_putstring("53 C 3");				// comment this out in final product
-				//vote_indicator_53 = 1;					// Indicating button 1 was pressed
-				//no_of_votes_cat3--;
-				////i2c_send_byte(PIC_DEV_ADDR, 53);
-				//deactivate_category_buttons_and_save(button53_addr, 53);  // provide starting and ending buttons as arguments
-			//}
-			if((53 > category_size_3) && (53 <= category_size_4) && (no_of_votes_cat4 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("53C4 ");				// comment this out in final product
-				vote_indicator_53 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat4--;
-				//i2c_send_byte(PIC_DEV_ADDR, 53);
-				deactivate_category_buttons_and_save(button53_addr, 53);  // provide starting and ending buttons as arguments
-			}
-			else if((53 > category_size_4) && (53 <= category_size_5) && (no_of_votes_cat5 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("53C5 ");				// comment this out in final product
-				vote_indicator_53 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat5--;
-				//i2c_send_byte(PIC_DEV_ADDR, 53);
-				deactivate_category_buttons_and_save(button53_addr, 53);  // provide starting and ending buttons as arguments
-			}
-			else if((53 > category_size_5) && (53 <= category_size_6) && (no_of_votes_cat6 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("53C6 ");				// comment this out in final product
-				vote_indicator_53 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat6--;
-				//i2c_send_byte(PIC_DEV_ADDR, 53);
-				deactivate_category_buttons_and_save(button53_addr, 53);  // provide starting and ending buttons as arguments
-			}
-			else if((53 > category_size_6) && (53 <= category_size_7) && (no_of_votes_cat7 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("53C7 ");				// comment this out in final product
-				vote_indicator_53 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat7--;
-				//i2c_send_byte(PIC_DEV_ADDR, 53);
-				deactivate_category_buttons_and_save(button53_addr, 53);  // provide starting and ending buttons as arguments
-			}
-			//else if((53 > category_size_7) && (53 <= category_size_8) && (no_of_votes_cat8 != 0x00))				// Mask out the MSB nibble.
-			//{
-				////USART_putstring("53C8 ");				// comment this out in final product
-				//vote_indicator_53 = 1;					// Indicating button 1 was pressed
-				//no_of_votes_cat8--;
-				////i2c_send_byte(PIC_DEV_ADDR, 53);
-				//deactivate_category_buttons_and_save(button53_addr, 53);  // provide starting and ending buttons as arguments
-			//}
-			else if ((53 > no_of_buttons_in_categories) && (gen_vote_count != 0))
-			{
-				//USART_putstring("53G ");		// comment this out in final product
-				vote_indicator_53 = 1;			// Indicating button 1 was pressed
-				deactivate_category_buttons_and_save(button53_addr, 53);
-				//i2c_send_byte(PIC_DEV_ADDR, 53);
-				gen_vote_count--;
-			}
-		}
-		
-		if ((matrix_A_data == 0) && (matrix_B_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 1) && ((PINB & 0x0F) == 0x05) && (54 <= candidate_count) && vote_indicator_54 == 0)
-		{
-			//if((54 > category_size_2) && (54 <= category_size_3) && (no_of_votes_cat3 != 0x00))				// Mask out the MSB nibble.
-			//{
-				////USART_putstring("54 C 3");				// comment this out in final product
-				//vote_indicator_54 = 1;					// Indicating button 1 was pressed
-				//no_of_votes_cat3--;
-				////i2c_send_byte(PIC_DEV_ADDR, 54);
-				//deactivate_category_buttons_and_save(button54_addr, 54);  // provide starting and ending buttons as arguments
-			//}
-			if((54 > category_size_3) && (54 <= category_size_4) && (no_of_votes_cat4 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("54C4 ");				// comment this out in final product
-				vote_indicator_54 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat4--;
-				//i2c_send_byte(PIC_DEV_ADDR, 54);
-				deactivate_category_buttons_and_save(button54_addr, 54);  // provide starting and ending buttons as arguments
-			}
-			else if((54 > category_size_4) && (54 <= category_size_5) && (no_of_votes_cat5 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("54C5 ");				// comment this out in final product
-				vote_indicator_54 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat5--;
-				//i2c_send_byte(PIC_DEV_ADDR, 54);
-				deactivate_category_buttons_and_save(button54_addr, 54);  // provide starting and ending buttons as arguments
-			}
-			else if((54 > category_size_5) && (54 <= category_size_6) && (no_of_votes_cat6 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("54C6 ");				// comment this out in final product
-				vote_indicator_54 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat6--;
-				//i2c_send_byte(PIC_DEV_ADDR, 54);
-				deactivate_category_buttons_and_save(button54_addr, 54);  // provide starting and ending buttons as arguments
-			}
-			else if((54 > category_size_6) && (54 <= category_size_7) && (no_of_votes_cat7 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("54C7 ");				// comment this out in final product
-				vote_indicator_54 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat7--;
-				//i2c_send_byte(PIC_DEV_ADDR, 54);
-				deactivate_category_buttons_and_save(button54_addr, 54);  // provide starting and ending buttons as arguments
-			}
-			//else if((54 > category_size_7) && (54 <= category_size_8) && (no_of_votes_cat8 != 0x00))				// Mask out the MSB nibble.
-			//{
-				////USART_putstring("54C8 ");				// comment this out in final product
-				//vote_indicator_54 = 1;					// Indicating button 1 was pressed
-				//no_of_votes_cat8--;
-				////i2c_send_byte(PIC_DEV_ADDR, 54);
-				//deactivate_category_buttons_and_save(button54_addr, 54);  // provide starting and ending buttons as arguments
-			//}
-			else if ((54 > no_of_buttons_in_categories) && (gen_vote_count != 0))
-			{
-				//USART_putstring("54G ");		// comment this out in final product
-				vote_indicator_54 = 1;			// Indicating button 1 was pressed
-				deactivate_category_buttons_and_save(button54_addr, 54);
-				//i2c_send_byte(PIC_DEV_ADDR, 54);
-				gen_vote_count--;
-			}
-		}
-		
-		if ((matrix_A_data == 0) && (matrix_B_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 1) && ((PINB & 0x0F) == 0x06) && (55 <= candidate_count) && vote_indicator_55 == 0)
-		{
-			//if((55 > category_size_2) && (55 <= category_size_3) && (no_of_votes_cat3 != 0x00))				// Mask out the MSB nibble.
-			//{
-				////USART_putstring("55 C 3");				// comment this out in final product
-				//vote_indicator_55 = 1;					// Indicating button 1 was pressed
-				//no_of_votes_cat3--;
-				////i2c_send_byte(PIC_DEV_ADDR, 55);
-				//deactivate_category_buttons_and_save(button55_addr, 55);  // provide starting and ending buttons as arguments
-			//}
-			if((55 > category_size_3) && (55 <= category_size_4) && (no_of_votes_cat4 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("55C4 ");				// comment this out in final product
-				vote_indicator_55 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat4--;
-				//i2c_send_byte(PIC_DEV_ADDR, 55);
-				deactivate_category_buttons_and_save(button55_addr, 55);  // provide starting and ending buttons as arguments
-			}
-			else if((55 > category_size_4) && (55 <= category_size_5) && (no_of_votes_cat5 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("55C5 ");				// comment this out in final product
-				vote_indicator_55 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat5--;
-				//i2c_send_byte(PIC_DEV_ADDR, 55);
-				deactivate_category_buttons_and_save(button55_addr, 55);  // provide starting and ending buttons as arguments
-			}
-			else if((55 > category_size_5) && (55 <= category_size_6) && (no_of_votes_cat6 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("55C6 ");				// comment this out in final product
-				vote_indicator_55 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat6--;
-				//i2c_send_byte(PIC_DEV_ADDR, 55);
-				deactivate_category_buttons_and_save(button55_addr, 55);  // provide starting and ending buttons as arguments
-			}
-			else if((55 > category_size_6) && (55 <= category_size_7) && (no_of_votes_cat7 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("55C7 ");				// comment this out in final product
-				vote_indicator_55 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat7--;
-				//i2c_send_byte(PIC_DEV_ADDR, 55);
-				deactivate_category_buttons_and_save(button55_addr, 55);  // provide starting and ending buttons as arguments
-			}
-			//else if((55 > category_size_7) && (55 <= category_size_8) && (no_of_votes_cat8 != 0x00))				// Mask out the MSB nibble.
-			//{
-				//USART_putstring("55C8 ");				// comment this out in final product
-				//vote_indicator_55 = 1;					// Indicating button 1 was pressed
-				//no_of_votes_cat8--;
-				////i2c_send_byte(PIC_DEV_ADDR, 55);
-				//deactivate_category_buttons_and_save(button55_addr, 55);  // provide starting and ending buttons as arguments
-			//}
-			else if ((55 > no_of_buttons_in_categories) && (gen_vote_count != 0))
-			{
-				//USART_putstring("55G ");		// comment this out in final product
-				vote_indicator_55 = 1;			// Indicating button 1 was pressed
-				deactivate_category_buttons_and_save(button55_addr, 55);
-				//i2c_send_byte(PIC_DEV_ADDR, 55);
-				gen_vote_count--;
-			}
-		}
-		
-		if ((matrix_A_data == 0) && (matrix_B_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 1) && ((PINB & 0x0F) == 0x07) && (56 <= candidate_count) && vote_indicator_56 == 0)
-		{
-			//if((56 > category_size_2) && (56 <= category_size_3) && (no_of_votes_cat3 != 0x00))				// Mask out the MSB nibble.
-			//{
-				////USART_putstring("56 C 3");				// comment this out in final product
-				//vote_indicator_56 = 1;					// Indicating button 1 was pressed
-				//no_of_votes_cat3--;
-				////i2c_send_byte(PIC_DEV_ADDR, 56);
-				//deactivate_category_buttons_and_save(button56_addr, 56);  // provide starting and ending buttons as arguments
-			//}
-			if((56 > category_size_3) && (56 <= category_size_4) && (no_of_votes_cat4 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("56C4 ");				// comment this out in final product
-				vote_indicator_56 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat4--;
-				//i2c_send_byte(PIC_DEV_ADDR, 56);
-				deactivate_category_buttons_and_save(button56_addr, 56);  // provide starting and ending buttons as arguments
-			}
-			else if((56 > category_size_4) && (56 <= category_size_5) && (no_of_votes_cat5 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("56C5 ");				// comment this out in final product
-				vote_indicator_56 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat5--;
-				//i2c_send_byte(PIC_DEV_ADDR, 56);
-				deactivate_category_buttons_and_save(button56_addr, 56);  // provide starting and ending buttons as arguments
-			}
-			else if((56 > category_size_5) && (56 <= category_size_6) && (no_of_votes_cat6 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("56C6 ");				// comment this out in final product
-				vote_indicator_56 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat6--;
-				//i2c_send_byte(PIC_DEV_ADDR, 56);
-				deactivate_category_buttons_and_save(button56_addr, 56);  // provide starting and ending buttons as arguments
-			}
-			else if((56 > category_size_6) && (56 <= category_size_7) && (no_of_votes_cat7 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("56C7 ");				// comment this out in final product
-				vote_indicator_56 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat7--;
-				//i2c_send_byte(PIC_DEV_ADDR, 56);
-				deactivate_category_buttons_and_save(button56_addr, 56);  // provide starting and ending buttons as arguments
-			}
-			//else if((56 > category_size_7) && (56 <= category_size_8) && (no_of_votes_cat8 != 0x00))				// Mask out the MSB nibble.
-			//{
-				////USART_putstring("56C8 ");				// comment this out in final product
-				//vote_indicator_56 = 1;					// Indicating button 1 was pressed
-				//no_of_votes_cat8--;
-				////i2c_send_byte(PIC_DEV_ADDR, 56);
-				//deactivate_category_buttons_and_save(button56_addr, 56);  // provide starting and ending buttons as arguments
-			//}
-			else if ((56 > no_of_buttons_in_categories) && (gen_vote_count != 0))
-			{
-				//USART_putstring("56G ");		// comment this out in final product
-				vote_indicator_56 = 1;			// Indicating button 1 was pressed
-				deactivate_category_buttons_and_save(button56_addr, 56);
-				//i2c_send_byte(PIC_DEV_ADDR, 56);
-				gen_vote_count--;
-			}
-		}
-		
-		if ((matrix_A_data == 0) && (matrix_B_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 1) && ((PINB & 0x0F) == 0x08) && (57 <= candidate_count) && vote_indicator_57 == 0)
-		{
-			//if((57 > category_size_2) && (57 <= category_size_3) && (no_of_votes_cat3 != 0x00))				// Mask out the MSB nibble.
-			//{
-				////USART_putstring("57 C 3");				// comment this out in final product
-				//vote_indicator_57 = 1;					// Indicating button 1 was pressed
-				//no_of_votes_cat3--;
-				////i2c_send_byte(PIC_DEV_ADDR, 57);
-				//deactivate_category_buttons_and_save(button57_addr, 57);  // provide starting and ending buttons as arguments
-			//}
-			if((57 > category_size_3) && (57 <= category_size_4) && (no_of_votes_cat4 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("57C4 ");				// comment this out in final product
-				vote_indicator_57 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat4--;
-				//i2c_send_byte(PIC_DEV_ADDR, 57);
-				deactivate_category_buttons_and_save(button57_addr, 57);  // provide starting and ending buttons as arguments
-			}
-			else if((57 > category_size_4) && (57 <= category_size_5) && (no_of_votes_cat5 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("57C5 ");				// comment this out in final product
-				vote_indicator_57 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat5--;
-				//i2c_send_byte(PIC_DEV_ADDR, 57);
-				deactivate_category_buttons_and_save(button57_addr, 57);  // provide starting and ending buttons as arguments
-			}
-			else if((57 > category_size_5) && (57 <= category_size_6) && (no_of_votes_cat6 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("57C6 ");				// comment this out in final product
-				vote_indicator_57 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat6--;
-				//i2c_send_byte(PIC_DEV_ADDR, 57);
-				deactivate_category_buttons_and_save(button57_addr, 57);  // provide starting and ending buttons as arguments
-			}
-			else if((57 > category_size_6) && (57 <= category_size_7) && (no_of_votes_cat7 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("57C7 ");				// comment this out in final product
-				vote_indicator_57 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat7--;
-				//i2c_send_byte(PIC_DEV_ADDR, 57);
-				deactivate_category_buttons_and_save(button57_addr, 57);  // provide starting and ending buttons as arguments
-			}
-			//else if((57 > category_size_7) && (57 <= category_size_8) && (no_of_votes_cat8 != 0x00))				// Mask out the MSB nibble.
-			//{
-				////USART_putstring("57C8 ");				// comment this out in final product
-				//vote_indicator_57 = 1;					// Indicating button 1 was pressed
-				//no_of_votes_cat8--;
-				////i2c_send_byte(PIC_DEV_ADDR, 57);
-				//deactivate_category_buttons_and_save(button57_addr, 57);  // provide starting and ending buttons as arguments
-			//}
-			else if ((57 > no_of_buttons_in_categories) && (gen_vote_count != 0))
-			{
-				//USART_putstring("57G ");		// comment this out in final product
-				vote_indicator_57 = 1;			// Indicating button 1 was pressed
-				deactivate_category_buttons_and_save(button57_addr, 57);
-				//i2c_send_byte(PIC_DEV_ADDR, 57);
-				gen_vote_count--;
-			}
-		}
-		
-		if ((matrix_A_data == 0) && (matrix_B_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 1) && ((PINB & 0x0F) == 0x09) && (58 <= candidate_count) && vote_indicator_58 == 0)
-		{
-			//if((58 > category_size_2) && (58 <= category_size_3) && (no_of_votes_cat3 != 0x00))				// Mask out the MSB nibble.
-			//{
-				////USART_putstring("58 C 3");				// comment this out in final product
-				//vote_indicator_58 = 1;					// Indicating button 1 was pressed
-				//no_of_votes_cat3--;
-				////i2c_send_byte(PIC_DEV_ADDR, 58);
-				//deactivate_category_buttons_and_save(button58_addr, 58);  // provide starting and ending buttons as arguments
-			//}
-			if((58 > category_size_3) && (58 <= category_size_4) && (no_of_votes_cat4 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("58C4 ");				// comment this out in final product
-				vote_indicator_58 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat4--;
-				//i2c_send_byte(PIC_DEV_ADDR, 58);
-				deactivate_category_buttons_and_save(button58_addr, 58);  // provide starting and ending buttons as arguments
-			}
-			else if((58 > category_size_4) && (58 <= category_size_5) && (no_of_votes_cat5 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("58C5 ");				// comment this out in final product
-				vote_indicator_58 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat5--;
-				//i2c_send_byte(PIC_DEV_ADDR, 58);
-				deactivate_category_buttons_and_save(button58_addr, 58);  // provide starting and ending buttons as arguments
-			}
-			else if((58 > category_size_5) && (58 <= category_size_6) && (no_of_votes_cat6 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("58C6 ");				// comment this out in final product
-				vote_indicator_58 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat6--;
-				//i2c_send_byte(PIC_DEV_ADDR, 58);
-				deactivate_category_buttons_and_save(button58_addr, 58);  // provide starting and ending buttons as arguments
-			}
-			else if((58 > category_size_6) && (58 <= category_size_7) && (no_of_votes_cat7 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("58C7 ");				// comment this out in final product
-				vote_indicator_58 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat7--;
-				//i2c_send_byte(PIC_DEV_ADDR, 58);
-				deactivate_category_buttons_and_save(button58_addr, 58);  // provide starting and ending buttons as arguments
-			}
-			//else if((58 > category_size_7) && (58 <= category_size_8) && (no_of_votes_cat8 != 0x00))				// Mask out the MSB nibble.
-			//{
-				////USART_putstring("58C8 ");				// comment this out in final product
-				//vote_indicator_58 = 1;					// Indicating button 1 was pressed
-				//no_of_votes_cat8--;
-				////i2c_send_byte(PIC_DEV_ADDR, 58);
-				//deactivate_category_buttons_and_save(button58_addr, 58);  // provide starting and ending buttons as arguments
-			//}
-			else if ((58 > no_of_buttons_in_categories) && (gen_vote_count != 0))
-			{
-				//USART_putstring("58G ");		// comment this out in final product
-				vote_indicator_58 = 1;			// Indicating button 1 was pressed
-				deactivate_category_buttons_and_save(button58_addr, 58);
-				//i2c_send_byte(PIC_DEV_ADDR, 58);
-				gen_vote_count--;
-			}
-		}
-		
-		if ((matrix_A_data == 0) && (matrix_B_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 1) && ((PINB & 0x0F) == 0x0A) && (59 <= candidate_count) && vote_indicator_59 == 0)
-		{
-			//if((59 > category_size_2) && (59 <= category_size_3) && (no_of_votes_cat3 != 0x00))				// Mask out the MSB nibble.
-			//{
-				////USART_putstring("59 C 3");				// comment this out in final product
-				//vote_indicator_59 = 1;					// Indicating button 1 was pressed
-				//no_of_votes_cat3--;
-				////i2c_send_byte(PIC_DEV_ADDR, 59);
-				//deactivate_category_buttons_and_save(button59_addr, 59);  // provide starting and ending buttons as arguments
-			//}
-			if((59 > category_size_3) && (59 <= category_size_4) && (no_of_votes_cat4 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("59C4 ");				// comment this out in final product
-				vote_indicator_59 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat4--;
-				//i2c_send_byte(PIC_DEV_ADDR, 59);
-				deactivate_category_buttons_and_save(button59_addr, 59);  // provide starting and ending buttons as arguments
-			}
-			else if((59 > category_size_4) && (59 <= category_size_5) && (no_of_votes_cat5 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("59C5 ");				// comment this out in final product
-				vote_indicator_59 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat5--;
-				//i2c_send_byte(PIC_DEV_ADDR, 59);
-				deactivate_category_buttons_and_save(button59_addr, 59);  // provide starting and ending buttons as arguments
-			}
-			else if((59 > category_size_5) && (59 <= category_size_6) && (no_of_votes_cat6 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("59C6 ");				// comment this out in final product
-				vote_indicator_59 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat6--;
-				//i2c_send_byte(PIC_DEV_ADDR, 59);
-				deactivate_category_buttons_and_save(button59_addr, 59);  // provide starting and ending buttons as arguments
-			}
-			else if((59 > category_size_6) && (59 <= category_size_7) && (no_of_votes_cat7 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("59C7 ");				// comment this out in final product
-				vote_indicator_59 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat7--;
-				//i2c_send_byte(PIC_DEV_ADDR, 59);
-				deactivate_category_buttons_and_save(button59_addr, 59);  // provide starting and ending buttons as arguments
-			}
-			//else if((59 > category_size_8) && (59 <= category_size_8) && (no_of_votes_cat8 != 0x00))				// Mask out the MSB nibble.
-			//{
-				////USART_putstring("59C8 ");				// comment this out in final product
-				//vote_indicator_59 = 1;					// Indicating button 1 was pressed
-				//no_of_votes_cat8--;
-				////i2c_send_byte(PIC_DEV_ADDR, 59);
-				//deactivate_category_buttons_and_save(button59_addr, 59);  // provide starting and ending buttons as arguments
-			//}
-			else if ((59 > no_of_buttons_in_categories) && (gen_vote_count != 0))
-			{
-				//USART_putstring("59G ");		// comment this out in final product
-				vote_indicator_59 = 1;			// Indicating button 1 was pressed
-				deactivate_category_buttons_and_save(button59_addr, 59);
-				//i2c_send_byte(PIC_DEV_ADDR, 59);
-				gen_vote_count--;
-			}
-		}
-		
-		if ((matrix_A_data == 0) && (matrix_B_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 1) && ((PINB & 0x0F) == 0x0B) && (60 <= candidate_count) && vote_indicator_60 == 0)
-		{
-			//if((60 > category_size_2) && (60 <= category_size_3) && (no_of_votes_cat3 != 0x00))				// Mask out the MSB nibble.
-			//{
-				////USART_putstring("60 C 3");				// comment this out in final product
-				//vote_indicator_60 = 1;					// Indicating button 1 was pressed
-				//no_of_votes_cat3--;
-				////i2c_send_byte(PIC_DEV_ADDR, 60);
-				//deactivate_category_buttons_and_save(button60_addr, 60);  // provide starting and ending buttons as arguments
-			//}
-			if((60 > category_size_3) && (60 <= category_size_4) && (no_of_votes_cat4 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("60C4 ");				// comment this out in final product
-				vote_indicator_60 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat4--;
-				//i2c_send_byte(PIC_DEV_ADDR, 60);
-				deactivate_category_buttons_and_save(button60_addr, 60);  // provide starting and ending buttons as arguments
-			}
-			else if((60 > category_size_4) && (60 <= category_size_5) && (no_of_votes_cat5 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("60C5 ");				// comment this out in final product
-				vote_indicator_60 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat5--;
-				//i2c_send_byte(PIC_DEV_ADDR, 60);
-				deactivate_category_buttons_and_save(button60_addr, 60);  // provide starting and ending buttons as arguments
-			}
-			else if((60 > category_size_5) && (60 <= category_size_6) && (no_of_votes_cat6 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("60C6 ");				// comment this out in final product
-				vote_indicator_60 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat6--;
-				//i2c_send_byte(PIC_DEV_ADDR, 60);
-				deactivate_category_buttons_and_save(button60_addr, 60);  // provide starting and ending buttons as arguments
-			}
-			else if((60 > category_size_6) && (60 <= category_size_7) && (no_of_votes_cat7 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("60C7 ");				// comment this out in final product
-				vote_indicator_60 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat7--;
-				//i2c_send_byte(PIC_DEV_ADDR, 60);
-				deactivate_category_buttons_and_save(button60_addr, 60);  // provide starting and ending buttons as arguments
-			}
-			//else if((60 > category_size_7) && (60 <= category_size_8) && (no_of_votes_cat8 != 0x00))				// Mask out the MSB nibble.
-			//{
-				////USART_putstring("60C8 ");				// comment this out in final product
-				//vote_indicator_60 = 1;					// Indicating button 1 was pressed
-				//no_of_votes_cat8--;
-				////i2c_send_byte(PIC_DEV_ADDR, 60);
-				//deactivate_category_buttons_and_save(button60_addr, 60);  // provide starting and ending buttons as arguments
-			//}
-			else if ((60 > no_of_buttons_in_categories) && (gen_vote_count != 0))
-			{
-				//USART_putstring("60G ");		// comment this out in final product
-				vote_indicator_60 = 1;			// Indicating button 1 was pressed
-				deactivate_category_buttons_and_save(button60_addr, 60);
-				//i2c_send_byte(PIC_DEV_ADDR, 60);
-				gen_vote_count--;
-			}
-		}
-		
-		if ((matrix_A_data == 0) && (matrix_B_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 1) && ((PINB & 0x0F) == 0x0C) && (61 <= candidate_count) && vote_indicator_61 == 0)
-		{
-			//if((61 > category_size_2) && (61 <= category_size_3) && (no_of_votes_cat3 != 0x00))				// Mask out the MSB nibble.
-			//{
-				////USART_putstring("61 C 3");				// comment this out in final product
-				//vote_indicator_61 = 1;					// Indicating button 1 was pressed
-				//no_of_votes_cat3--;
-				////i2c_send_byte(PIC_DEV_ADDR, 61);
-				//deactivate_category_buttons_and_save(button61_addr, 61);  // provide starting and ending buttons as arguments
-			//}
-			//else if((61 > category_size_4) && (61 <= category_size_5) && (no_of_votes_cat4 != 0x00))				// Mask out the MSB nibble.
-			//{
-				////USART_putstring("61 C 4");				// comment this out in final product
-				//vote_indicator_61 = 1;					// Indicating button 1 was pressed
-				//no_of_votes_cat4--;
-				////i2c_send_byte(PIC_DEV_ADDR, 61);
-				//deactivate_category_buttons_and_save(button61_addr, 61);  // provide starting and ending buttons as arguments
-			//}
-			if((61 > category_size_4) && (61 <= category_size_5) && (no_of_votes_cat5 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("61C5 ");				// comment this out in final product
-				vote_indicator_61 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat5--;
-				//i2c_send_byte(PIC_DEV_ADDR, 61);
-				deactivate_category_buttons_and_save(button61_addr, 61);  // provide starting and ending buttons as arguments
-			}
-			else if((61 > category_size_5) && (61 <= category_size_6) && (no_of_votes_cat6 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("61C6 ");				// comment this out in final product
-				vote_indicator_61 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat6--;
-				//i2c_send_byte(PIC_DEV_ADDR, 61);
-				deactivate_category_buttons_and_save(button61_addr, 61);  // provide starting and ending buttons as arguments
-			}
-			else if((61 > category_size_6) && (61 <= category_size_7) && (no_of_votes_cat7 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("61C7 ");				// comment this out in final product
-				vote_indicator_61 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat7--;
-				//i2c_send_byte(PIC_DEV_ADDR, 61);
-				deactivate_category_buttons_and_save(button61_addr, 61);  // provide starting and ending buttons as arguments
-			}
-			//else if((61 > category_size_7) && (61 <= category_size_8) && (no_of_votes_cat8 != 0x00))				// Mask out the MSB nibble.
-			//{
-				////USART_putstring("61C8 ");				// comment this out in final product
-				//vote_indicator_61 = 1;					// Indicating button 1 was pressed
-				//no_of_votes_cat8--;
-				////i2c_send_byte(PIC_DEV_ADDR, 61);
-				//deactivate_category_buttons_and_save(button61_addr, 61);  // provide starting and ending buttons as arguments
-			//}
-			else if ((61 > no_of_buttons_in_categories) && (gen_vote_count != 0))
-			{
-				//USART_putstring("61G ");		// comment this out in final product
-				vote_indicator_61 = 1;			// Indicating button 1 was pressed
-				deactivate_category_buttons_and_save(button61_addr, 61);
-				//i2c_send_byte(PIC_DEV_ADDR, 61);
-				gen_vote_count--;
-			}
-		}
-		
-		if ((matrix_A_data == 0) && (matrix_B_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 1) && ((PINB & 0x0F) == 0x0D) && (62 <= candidate_count) && vote_indicator_62 == 0)
-		{
-			//if((62 > category_size_2) && (62 <= category_size_3) && (no_of_votes_cat3 != 0x00))				// Mask out the MSB nibble.
-			//{
-				////USART_putstring("62 C 3");				// comment this out in final product
-				//vote_indicator_62 = 1;					// Indicating button 1 was pressed
-				//no_of_votes_cat3--;
-				////i2c_send_byte(PIC_DEV_ADDR, 62);
-				//deactivate_category_buttons_and_save(button62_addr, 62);  // provide starting and ending buttons as arguments
-			//}
-			//if((62 > category_size_4) && (62 <= category_size_5) && (no_of_votes_cat4 != 0x00))				// Mask out the MSB nibble.
-			//{
-				////USART_putstring("62 C 4");				// comment this out in final product
-				//vote_indicator_62 = 1;					// Indicating button 1 was pressed
-				//no_of_votes_cat4--;
-				////i2c_send_byte(PIC_DEV_ADDR, 62);
-				//deactivate_category_buttons_and_save(button62_addr, 62);  // provide starting and ending buttons as arguments
-			//}
-			if((62 > category_size_4) && (62 <= category_size_5) && (no_of_votes_cat5 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("62C5 ");				// comment this out in final product
-				vote_indicator_62 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat5--;
-				//i2c_send_byte(PIC_DEV_ADDR, 62);
-				deactivate_category_buttons_and_save(button62_addr, 62);  // provide starting and ending buttons as arguments
-			}
-			else if((62 > category_size_5) && (62 <= category_size_6) && (no_of_votes_cat6 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("62C6 ");				// comment this out in final product
-				vote_indicator_62 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat6--;
-				//i2c_send_byte(PIC_DEV_ADDR, 62);
-				deactivate_category_buttons_and_save(button62_addr, 62);  // provide starting and ending buttons as arguments
-			}
-			else if((62 > category_size_6) && (62 <= category_size_7) && (no_of_votes_cat7 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("62C7 ");				// comment this out in final product
-				vote_indicator_62 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat7--;
-				//i2c_send_byte(PIC_DEV_ADDR, 62);
-				deactivate_category_buttons_and_save(button62_addr, 62);  // provide starting and ending buttons as arguments
-			}
-			//else if((62 > category_size_7) && (62 <= category_size_8) && (no_of_votes_cat8 != 0x00))				// Mask out the MSB nibble.
-			//{
-				////USART_putstring("62C8 ");				// comment this out in final product
-				//vote_indicator_62 = 1;					// Indicating button 1 was pressed
-				//no_of_votes_cat8--;
-				////i2c_send_byte(PIC_DEV_ADDR, 62);
-				//deactivate_category_buttons_and_save(button62_addr, 62);  // provide starting and ending buttons as arguments
-			//}
-			else if ((62 > no_of_buttons_in_categories) && (gen_vote_count != 0))
-			{
-				//USART_putstring("62G ");		// comment this out in final product
-				vote_indicator_62 = 1;			// Indicating button 1 was pressed
-				deactivate_category_buttons_and_save(button62_addr, 62);
-				//i2c_send_byte(PIC_DEV_ADDR, 62);
-				gen_vote_count--;
-			}
-		}
-		
-		if ((matrix_A_data == 0) && (matrix_B_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 1) && ((PINB & 0x0F) == 0x0E) && (63 <= candidate_count) && vote_indicator_63 == 0)
-		{
-			//if((63 > category_size_2) && (63 <= category_size_3) && (no_of_votes_cat3 != 0x00))				// Mask out the MSB nibble.
-			//{
-				////USART_putstring("63 C 3");				// comment this out in final product
-				//vote_indicator_63 = 1;					// Indicating button 1 was pressed
-				//no_of_votes_cat3--;
-				////i2c_send_byte(PIC_DEV_ADDR, 63);
-				//deactivate_category_buttons_and_save(button63_addr, 63);  // provide starting and ending buttons as arguments
-			//}
-			//if((63 > category_size_4) && (63 <= category_size_5) && (no_of_votes_cat4 != 0x00))				// Mask out the MSB nibble.
-			//{
-				////USART_putstring("63 C 4");				// comment this out in final product
-				//vote_indicator_63 = 1;					// Indicating button 1 was pressed
-				//no_of_votes_cat4--;
-				////i2c_send_byte(PIC_DEV_ADDR, 63);
-				//deactivate_category_buttons_and_save(button63_addr, 63);  // provide starting and ending buttons as arguments
-			//}
-			if((63 > category_size_4) && (63 <= category_size_5) && (no_of_votes_cat5 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("63C5 ");				// comment this out in final product
-				vote_indicator_63 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat5--;
-				//i2c_send_byte(PIC_DEV_ADDR, 63);
-				deactivate_category_buttons_and_save(button63_addr, 63);  // provide starting and ending buttons as arguments
-			}
-			else if((63 > category_size_5) && (63 <= category_size_6) && (no_of_votes_cat6 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("63C6 ");				// comment this out in final product
-				vote_indicator_63 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat6--;
-				//i2c_send_byte(PIC_DEV_ADDR, 63);
-				deactivate_category_buttons_and_save(button63_addr, 63);  // provide starting and ending buttons as arguments
-			}
-			else if((63 > category_size_6) && (63 <= category_size_7) && (no_of_votes_cat7 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("63C7 ");				// comment this out in final product
-				vote_indicator_63 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat7--;
-				//i2c_send_byte(PIC_DEV_ADDR, 63);
-				deactivate_category_buttons_and_save(button63_addr, 63);  // provide starting and ending buttons as arguments
-			}
-			//else if((63 > category_size_7) && (63 <= category_size_8) && (no_of_votes_cat8 != 0x00))				// Mask out the MSB nibble.
-			//{
-				////USART_putstring("63C8 ");				// comment this out in final product
-				//vote_indicator_63 = 1;					// Indicating button 1 was pressed
-				//no_of_votes_cat8--;
-				////i2c_send_byte(PIC_DEV_ADDR, 63);
-				//deactivate_category_buttons_and_save(button63_addr, 63);  // provide starting and ending buttons as arguments
-			//}
-			else if ((63 > no_of_buttons_in_categories) && (gen_vote_count != 0))
-			{
-				//USART_putstring("63G ");		// comment this out in final product
-				vote_indicator_63 = 1;			// Indicating button 1 was pressed
-				deactivate_category_buttons_and_save(button63_addr, 63);
-				//i2c_send_byte(PIC_DEV_ADDR, 63);
-				gen_vote_count--;
-			}
-		}
-		
-		if ((matrix_A_data == 0) && (matrix_B_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 1) && ((PINB & 0x0F) == 0x0F) && (64 <= candidate_count) && vote_indicator_64 == 0)
-		{
-			//if((64 > category_size_2) && (64 <= category_size_3) && (no_of_votes_cat3 != 0x00))				// Mask out the MSB nibble.
-			//{
-				////USART_putstring("64 C 3");				// comment this out in final product
-				//vote_indicator_64 = 1;					// Indicating button 1 was pressed
-				//no_of_votes_cat3--;
-				////i2c_send_byte(PIC_DEV_ADDR, 64);
-				//deactivate_category_buttons_and_save(button64_addr, 64);  // provide starting and ending buttons as arguments
-			//}
-			//if((64 > category_size_4) && (64 <= category_size_5) && (no_of_votes_cat4 != 0x00))				// Mask out the MSB nibble.
-			//{
-				////USART_putstring("64 C 4");				// comment this out in final product
-				//vote_indicator_64 = 1;					// Indicating button 1 was pressed
-				//no_of_votes_cat4--;
-				////i2c_send_byte(PIC_DEV_ADDR, 64);
-				//deactivate_category_buttons_and_save(button64_addr, 64);  // provide starting and ending buttons as arguments
-			//}
-			if((64 > category_size_4) && (64 <= category_size_5) && (no_of_votes_cat5 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("64C5 ");				// comment this out in final product
-				vote_indicator_64 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat5--;
-				//i2c_send_byte(PIC_DEV_ADDR, 64);
-				deactivate_category_buttons_and_save(button64_addr, 64);  // provide starting and ending buttons as arguments
-			}
-			else if((64 > category_size_5) && (64 <= category_size_6) && (no_of_votes_cat6 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("64C6 ");				// comment this out in final product
-				vote_indicator_64 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat6--;
-				//i2c_send_byte(PIC_DEV_ADDR, 64);
-				deactivate_category_buttons_and_save(button64_addr, 64);  // provide starting and ending buttons as arguments
-			}
-			else if((64 > category_size_6) && (64 <= category_size_7) && (no_of_votes_cat7 != 0x00))				// Mask out the MSB nibble.
-			{
-				//USART_putstring("64C7 ");				// comment this out in final product
-				vote_indicator_64 = 1;					// Indicating button 1 was pressed
-				no_of_votes_cat7--;
-				//i2c_send_byte(PIC_DEV_ADDR, 64);
-				deactivate_category_buttons_and_save(button64_addr, 64);  // provide starting and ending buttons as arguments
-			}
-			//else if((64 > category_size_7) && (64 <= category_size_8) && (no_of_votes_cat8 != 0x00))				// Mask out the MSB nibble.
-			//{
-				////USART_putstring("64C8 ");				// comment this out in final product
-				//vote_indicator_64 = 1;					// Indicating button 1 was pressed
-				//no_of_votes_cat8--;
-				////i2c_send_byte(PIC_DEV_ADDR, 64);
-				//deactivate_category_buttons_and_save(button64_addr, 64);  // provide starting and ending buttons as arguments
-			//}
-			else if ((64 > no_of_buttons_in_categories) && (gen_vote_count != 0))
-			{
-				//USART_putstring("64G ");		// comment this out in final product
-				vote_indicator_64 = 1;			// Indicating button 1 was pressed
-				deactivate_category_buttons_and_save(button64_addr, 64);
-				//i2c_send_byte(PIC_DEV_ADDR, 64);
-				gen_vote_count--;
+			if ((matrix_A_data == 0) && (matrix_B_data == 0) && (matrix_C_data == 0) && (matrix_D_data == 1) && ((PINC & 0x0F) == 0x0F) && (64 <= candidate_count) && vote_indicator_64 == 0)
+			{
+				//if((64 > category_size_2) && (64 <= category_size_3) && (no_of_votes_cat3 != 0x00))				// Mask out the MSB nibble.
+				//{
+					////USART_putstring("64 C 3");				// comment this out in final product
+					//vote_indicator_64 = 1;					// Indicating button 1 was pressed
+					//no_of_votes_cat3--;
+					////i2c_send_byte(PIC_DEV_ADDR, 64);
+					//deactivate_category_buttons_and_save(button64_addr, 64);  // provide starting and ending buttons as arguments
+				//}
+				//if((64 > category_size_4) && (64 <= category_size_5) && (no_of_votes_cat4 != 0x00))				// Mask out the MSB nibble.
+				//{
+					////USART_putstring("64 C 4");				// comment this out in final product
+					//vote_indicator_64 = 1;					// Indicating button 1 was pressed
+					//no_of_votes_cat4--;
+					////i2c_send_byte(PIC_DEV_ADDR, 64);
+					//deactivate_category_buttons_and_save(button64_addr, 64);  // provide starting and ending buttons as arguments
+				//}
+				if((64 > category_size_4) && (64 <= category_size_5) && (no_of_votes_cat5 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("64C5 ");				// comment this out in final product
+					vote_indicator_64 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat5--;
+					//i2c_send_byte(PIC_DEV_ADDR, 64);
+					deactivate_category_buttons_and_save(button64_addr, 64);  // provide starting and ending buttons as arguments
+				}
+				else if((64 > category_size_5) && (64 <= category_size_6) && (no_of_votes_cat6 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("64C6 ");				// comment this out in final product
+					vote_indicator_64 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat6--;
+					//i2c_send_byte(PIC_DEV_ADDR, 64);
+					deactivate_category_buttons_and_save(button64_addr, 64);  // provide starting and ending buttons as arguments
+				}
+				else if((64 > category_size_6) && (64 <= category_size_7) && (no_of_votes_cat7 != 0x00))				// Mask out the MSB nibble.
+				{
+					//USART_putstring("64C7 ");				// comment this out in final product
+					vote_indicator_64 = 1;					// Indicating button 1 was pressed
+					no_of_votes_cat7--;
+					//i2c_send_byte(PIC_DEV_ADDR, 64);
+					deactivate_category_buttons_and_save(button64_addr, 64);  // provide starting and ending buttons as arguments
+				}
+				//else if((64 > category_size_7) && (64 <= category_size_8) && (no_of_votes_cat8 != 0x00))				// Mask out the MSB nibble.
+				//{
+					////USART_putstring("64C8 ");				// comment this out in final product
+					//vote_indicator_64 = 1;					// Indicating button 1 was pressed
+					//no_of_votes_cat8--;
+					////i2c_send_byte(PIC_DEV_ADDR, 64);
+					//deactivate_category_buttons_and_save(button64_addr, 64);  // provide starting and ending buttons as arguments
+				//}
+				else if ((64 > no_of_buttons_in_categories) && (gen_vote_count != 0))
+				{
+					//USART_putstring("64G ");		// comment this out in final product
+					vote_indicator_64 = 1;			// Indicating button 1 was pressed
+					deactivate_category_buttons_and_save(button64_addr, 64);
+					//i2c_send_byte(PIC_DEV_ADDR, 64);
+					gen_vote_count--;
+				}
 			}
-		}
 		
 			else if(INIT == 0)
 			{
@@ -5336,7 +5345,7 @@ int main(void)
 		PORT_pins_init();				// Initialize PORT pins to desired direction and values
 		USART_Init();					// Initialize USART to set baud rate
 		i2c_init();						// Initializing I2C registers of ATmega32
-		spi_init();
+		//spi_init();
 		sei();							// Enable global interrupt bit.
 		
 		lcd_cmd(0x38);			 		// Initialize 16x2 LCD for 5*7 matrix display
@@ -5351,27 +5360,27 @@ i2cReadWordArray(EEPROM_DEV_ADDR, namePtrSaveAddr, stringPtrArray, 30);		// Adde
 
 
 /************************ SD card detection routine	*****************************/
-cardType = 0;
-
-for (i = 0; i < 10; i++)
-{
-	error = SD_init();
-	if(!error) break;
-}
-
-if(error)
-{
-	//TODO handle error codes here
-}
-
-error = getBootSectorData(); //read boot sector and keep necessary data in global variables
-if(error)
-{
-	// TODO handle card format type error detection
-}
-
-SPI_HIGH_SPEED;	//SCK - 4 MHz
-_delay_ms(1);   	//some delay for settling new spi speed
+//cardType = 0;
+//
+//for (i = 0; i < 10; i++)
+//{
+	//error = SD_init();
+	//if(!error) break;
+//}
+//
+//if(error)
+//{
+	////TODO handle error codes here
+//}
+//
+//error = getBootSectorData(); //read boot sector and keep necessary data in global variables
+//if(error)
+//{
+	//// TODO handle card format type error detection
+//}
+//
+//SPI_HIGH_SPEED;	//SCK - 4.6 MHz
+//_delay_ms(1);   	//some delay for settling new spi speed
 
 /**********************************************************************************/
 			
@@ -5798,6 +5807,12 @@ USART_putstring("ALL OK");		;
 				lcd_cmd(0xc0);
 				lcd_data_str("Voters: ");
 				lcd_data_int(voter_count);				// This displays how many voters have cast atleast one vote
+				
+				/* for debug purposes*/
+				USART_Transmit_dec(PINC);
+				USART_SendByte(0x0D);
+				
+				
 				
 				if(rx0_data == 'A')	  // For sending device ID
 				{
